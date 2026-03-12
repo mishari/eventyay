@@ -331,11 +331,11 @@ class Forgot(TemplateView):
             try:
                 send_password_reset(email, has_redis, request)
             except User.DoesNotExist:
-                logger.warning('Password reset for unregistered e-mail "%s" requested.', email)
+                logger.warning('Password reset for unregistered e-mail requested.')
             except SendMailException:
-                logger.exception('Sending password reset e-mail to "%s" failed.', email)
+                logger.exception('Sending password reset e-mail failed.')
             except RepeatedResetDenied:
-                logger.info('Password reset for "%s" denied due to repeated requests.', email)
+                logger.info('Password reset denied due to repeated requests.')
 
             finally:
                 msg = (
@@ -592,5 +592,5 @@ def send_password_reset(email: str, has_redis: bool, request: HttpRequest):
             rc.setex(f'eventyay_pwreset_{user.id}', 3600 * 24, '1')
 
     user.send_password_reset(request)
-    logger.info('Sent email for password reset to "%s"', email)
+    logger.info('Sent password reset email.')
     user.log_action('eventyay.eventyay_common.auth.user.forgot_password.mail_sent')

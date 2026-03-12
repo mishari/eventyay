@@ -607,7 +607,7 @@ def images_from_questions(sender, *args, **kwargs):
             return None
         else:
             if etag:
-                return hashlib.sha1(a.file.name.encode()).hexdigest()
+                return hashlib.sha1(a.file.name.encode(), usedforsecurity=False).hexdigest()
             return a.file
 
     d = {}

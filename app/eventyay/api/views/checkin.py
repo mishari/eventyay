@@ -1,5 +1,8 @@
+import logging
 import operator
 from functools import reduce
+
+logger = logging.getLogger(__name__)
 
 import django_filters
 from django.conf import settings
@@ -462,8 +465,8 @@ def _handle_no_candidates(
                         'raw_subevent': parsed.subevent,
                     }
                 )
-            except:
-                pass
+            except Exception:
+                logger.debug('Failed to parse barcode secret via generator %s.', k, exc_info=True)
 
     if not simulate:
         Checkin.objects.create(

@@ -86,7 +86,7 @@ class NanoCDNStorage(Storage):
         return NanoCDNFile(name, self, mode)
 
     def _read(self, name):
-        resp = requests.get(urllib.parse.urljoin(self.base_url, name), stream=True)
+        resp = requests.get(urllib.parse.urljoin(self.base_url, name), stream=True, timeout=30)
         if resp.status_code == 404:
             raise FileNotFoundError()
         resp.raise_for_status()
@@ -95,7 +95,7 @@ class NanoCDNStorage(Storage):
     def _save(self, name, content):
         content = content.read()
 
-        sha1 = hashlib.sha1()
+        sha1 = hashlib.sha1(usedforsecurity=False)
         sha1.update(content.encode() if isinstance(content, str) else content)
 
         parts = name.split("/")
@@ -120,6 +120,7 @@ class NanoCDNStorage(Storage):
             urllib.parse.urljoin(self.base_url, os.path.join("upload", name)),
             data=content,
             allow_redirects=False,
+            timeout=60,
         )
         if resp.status_code != 409:
             resp.raise_for_status()
@@ -141,21 +142,21 @@ class NanoCDNStorage(Storage):
     def delete(self, name):
         if isinstance(name, NanoCDNFile):
             name = name.name
-        resp = requests.delete(urllib.parse.urljoin(self.base_url, name))
+        resp = requests.delete(urllib.parse.urljoin(self.base_url, name), timeout=30)
         if resp.status_code == 404:
             return resp  # That is fine
         resp.raise_for_status()
         return resp
 
     def exists(self, name):
-        resp = requests.head(urllib.parse.urljoin(self.base_url, name))
+        resp = requests.head(urllib.parse.urljoin(self.base_url, name), timeout=30)
         if resp.status_code == 404:
             return False
         resp.raise_for_status()
         return True
 
     def size(self, name):
-        resp = requests.head(urllib.parse.urljoin(self.base_url, name))
+        resp = requests.head(urllib.parse.urljoin(self.base_url, name), timeout=30)
         resp.raise_for_status()
         return resp["Content-Length"]
 

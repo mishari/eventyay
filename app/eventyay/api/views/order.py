@@ -1,7 +1,10 @@
 import datetime
+import logging
 import mimetypes
 import os
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 import django_filters
 import pytz
@@ -368,7 +371,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             except PaymentException as e:
                 return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except SendMailException:
-                pass
+                logger.warning('Failed to send confirmation email after mark_paid.', exc_info=True)
 
             return self.retrieve(request, [], **kwargs)
         return Response(
@@ -1193,9 +1196,9 @@ class PaymentViewSet(CreateModelMixin, viewsets.ReadOnlyModelViewSet):
                         send_mail=send_mail,
                     )
                 except Quota.QuotaExceededException:
-                    pass
+                    logger.warning('Quota exceeded during order confirmation after payment start.', exc_info=True)
                 except SendMailException:
-                    pass
+                    logger.warning('Failed to send confirmation email after order payment start.', exc_info=True)
 
             serializer = OrderPaymentSerializer(r, context=serializer.context)
 
@@ -1243,7 +1246,7 @@ class PaymentViewSet(CreateModelMixin, viewsets.ReadOnlyModelViewSet):
         except PaymentException as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except SendMailException:
-            pass
+            logger.warning('Failed to send email after order action.', exc_info=True)
         return self.retrieve(request, [], **kwargs)
 
     @action(detail=True, methods=['POST'])

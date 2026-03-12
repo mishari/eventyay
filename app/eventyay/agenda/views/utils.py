@@ -1,6 +1,4 @@
 import hashlib
-import random
-import string
 import logging
 from datetime import datetime, timezone as dt_timezone
 
@@ -198,13 +196,7 @@ def encode_email(email):
     @param email: User's email
     @return: encoded string
     """
-    hash_object = hashlib.sha256(email.encode())
-    hash_hex = hash_object.hexdigest()
-    short_hash = hash_hex[:7]
-    characters = string.ascii_letters + string.digits
-    random_suffix = ''.join(random.choice(characters) for _ in range(7 - len(short_hash)))
-    final_result = short_hash + random_suffix
-    return final_result.upper()
+    return hashlib.sha256(email.encode()).hexdigest()[:7].upper()
 
 
 def get_schedule_exporter_content(request, exporter_name, schedule, token=None):
@@ -247,7 +239,7 @@ def get_schedule_exporter_content(request, exporter_name, schedule, token=None):
             exporter.talk_ids = talk_ids
     try:
         file_name, file_type, data = exporter.render(request=request)
-        etag = hashlib.sha1(str(data).encode()).hexdigest()
+        etag = hashlib.sha1(str(data).encode(), usedforsecurity=False).hexdigest()
     except Exception:
         logger.exception(f'Failed to use {exporter.identifier} for {request.event.slug}')
         return

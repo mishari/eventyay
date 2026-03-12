@@ -347,4 +347,4 @@ def send_webhook(self, logentry_id: int, action_type: str, webhook_id: int):
                     countdown=2 ** (self.request.retries * 2)
                 )  # max is 2 ** (8*2) = 65536 seconds = ~18 hours
         except MaxRetriesExceededError:
-            pass
+            logger.warning('Webhook delivery to %s permanently failed after max retries.', webhook.target_url)
