@@ -1476,7 +1476,6 @@ ENTROPY = {
 }
 
 IS_HTML_EXPORT = False
-HTMLEXPORT_ROOT = DATA_DIR / 'htmlexport'
 
 # TODO: Move to consts.py
 EVENTYAY_PRIMARY_COLOR = '#2185d0'

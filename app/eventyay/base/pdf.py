@@ -937,6 +937,7 @@ class Renderer:
                         'compress',
                     ],
                     check=True,
+                    timeout=120,
                 )
                 with open(os.path.join(d, 'out.pdf'), 'rb') as f:
                     return BytesIO(f.read())

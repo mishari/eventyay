@@ -42,6 +42,7 @@ from eventyay.base.models import (
 )
 from eventyay.base.timeline import timeline_for_event
 from eventyay.control.forms.event import CommentForm
+from eventyay.control.logdisplay import OVERVIEW_BANLIST
 from eventyay.control.signals import (
     event_dashboard_widgets,
     user_dashboard_widgets,
@@ -51,9 +52,6 @@ from eventyay.helpers.plugin_enable import is_video_enabled
 
 from ...base.models.orders import CancellationRequest
 from ..utils import EventCreatedFor, get_subevent
-
-OVERVIEW_BANLIST = ['eventyay.plugins.sendmail.order.email.sent']
-
 
 def event_index_widgets_lazy(request: HttpRequest, **kwargs) -> JsonResponse:
     subevent = get_subevent(request)

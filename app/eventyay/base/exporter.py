@@ -1,6 +1,9 @@
 import io
+import logging
 import re
 import tempfile
+
+logger = logging.getLogger(__name__)
 from collections import OrderedDict, namedtuple
 from decimal import Decimal
 from typing import Tuple
@@ -184,8 +187,8 @@ class ListExporter(BaseExporter):
         ws = wb.create_sheet()
         try:
             ws.title = str(self.verbose_name)
-        except:
-            pass
+        except Exception:
+            logger.debug('Could not set worksheet title for exporter %s.', type(self).__name__)
         total = 0
         counter = 0
         for i, line in enumerate(self.iterate_list(form_data)):
