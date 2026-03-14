@@ -383,16 +383,6 @@ class EventSettingsView(views.APIView):
         return Response(s.data)
 
 
-def check_token_permission(token, permission_required):
-    # Decode and validate the JWT token
-    decoded_data = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
-    # Check if user existed
-    User.objects.get(email=decoded_data['email'])
-    if decoded_data.get('has_perms') not in permission_required:
-        return False
-    return True
-
-
 @csrf_exempt
 @require_POST
 @scopes_disabled()
@@ -640,15 +630,11 @@ class UserFavouriteView(APIView):
                 logger.error("User not found for adding favourite talks.")
                 return JsonResponse([], safe=False, status=200)
             if user.client_state is None:
-                # If it's None, create a new dictionary with schedule.favs field
                 user.client_state = {"schedule": {"favs": talk_list}}
             else:
-                # If client_state is not None, check if 'schedule' field exists
                 if "schedule" not in user.client_state:
-                    # If 'schedule' field doesn't exist, create it
                     user.client_state["schedule"] = {"favs": talk_list}
                 else:
-                    # If 'schedule' field exists, update the 'favs' field
                     user.client_state["schedule"]["favs"] = talk_list
             user.save()
             return JsonResponse(talk_list, safe=False, status=200)
@@ -658,7 +644,6 @@ class UserFavouriteView(APIView):
                 kwargs["event_id"],
             )
             logger.error(e)
-            # Since this is called from background so no error should be returned
             return JsonResponse([], safe=False, status=200)
 
     @staticmethod

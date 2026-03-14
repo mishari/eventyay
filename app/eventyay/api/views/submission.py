@@ -582,20 +582,6 @@ class SubmissionFavouriteDeprecatedView(View):
             )
 
     @staticmethod
-    def get_user_video_token(user_code, video_settings):
-        iat = dt.datetime.utcnow()
-        exp = iat + dt.timedelta(days=30)
-        payload = {
-            "iss": video_settings.issuer,
-            "aud": video_settings.audience,
-            "exp": exp,
-            "iat": iat,
-            "uid": user_code,
-        }
-        token = jwt.encode(payload, video_settings.secret, algorithm="HS256")
-        return token
-
-    @staticmethod
     def get_user_from_token(request, video_settings):
         auth_header = get_authorization_header(request).split()
         if not auth_header:
