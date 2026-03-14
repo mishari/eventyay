@@ -36,7 +36,7 @@ def widget_js_etag(request, organizer=None, event=None, **kwargs):
 
     if WIDGET_JS_CHECKSUM is None or WIDGET_JS_MTIME != mtime:
         with open(file_path, encoding='utf-8') as fp:
-            WIDGET_JS_CHECKSUM = hashlib.md5(fp.read().encode()).hexdigest()
+            WIDGET_JS_CHECKSUM = hashlib.md5(fp.read().encode(), usedforsecurity=False).hexdigest()
         WIDGET_JS_MTIME = mtime
     return WIDGET_JS_CHECKSUM
 

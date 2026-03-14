@@ -43,7 +43,7 @@ class Command(BaseCommand):
         gs = GlobalSettingsObject()
         for lc, ll in settings.LANGUAGES:
             data = generate_widget_js(lc).encode()
-            checksum = hashlib.sha1(data).hexdigest()
+            checksum = hashlib.sha1(data, usedforsecurity=False).hexdigest()
             fname = gs.settings.get('widget_file_{}'.format(lc))
             if not fname or gs.settings.get('widget_checksum_{}'.format(lc), '') != checksum:
                 newname = default_storage.save('pub/widget/widget.{}.{}.js'.format(lc, checksum), ContentFile(data))

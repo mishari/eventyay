@@ -1,7 +1,7 @@
 import django.utils.translation
 from django.conf import settings
 from django.template.defaultfilters import date
-from jinja2 import Environment
+from jinja2 import Environment, select_autoescape
 
 from eventyay.helpers.templatetags.thumb import thumb
 
@@ -21,6 +21,7 @@ jj_filters = {
 
 
 def environment(**options) -> Environment:
+    options.setdefault('autoescape', select_autoescape(['html', 'xml']))
     env = Environment(**options)
     # This method is from `jinja2.ext.i18n`
     env.install_gettext_translations(django.utils.translation, newstyle=True)

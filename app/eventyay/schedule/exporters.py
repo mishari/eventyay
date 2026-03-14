@@ -1,6 +1,7 @@
 import datetime as dt
 import json
-import xml.etree.ElementTree as ElementTree
+from defusedxml import ElementTree
+from xml.etree.ElementTree import tostring as xml_tostring
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -134,7 +135,7 @@ class FrabXmlExporter(ScheduleData):
                         event_slug = event.find('url').text.split('/')[-2]
                         if event_slug not in self.talk_ids:
                             room.remove(event)
-            filtered_xml_data = ElementTree.tostring(root, encoding='unicode')
+            filtered_xml_data = xml_tostring(root, encoding='unicode')
             content = SafeString(filtered_xml_data)
         return f'{self.event.slug}-schedule.xml', 'text/xml', content
 
@@ -166,7 +167,7 @@ class FrabXCalExporter(ScheduleData):
                     event_uid = vevent.find('uid').text.split('@@')[0]
                     if event_uid not in self.talk_ids:
                         vcalendar.remove(vevent)
-            filtered_xcal_data = ElementTree.tostring(root, encoding='unicode')
+            filtered_xcal_data = xml_tostring(root, encoding='unicode')
             content = SafeString(filtered_xcal_data)
         return f'{self.event.slug}.xcal', 'text/xml', content
 

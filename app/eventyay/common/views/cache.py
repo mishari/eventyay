@@ -21,7 +21,7 @@ def get_etag(response):
     content = response.content
     if isinstance(content, str):
         content = content.encode()
-    return hashlib.md5(content).hexdigest()
+    return hashlib.md5(content, usedforsecurity=False).hexdigest()
 
 
 def conditional_cache_page(

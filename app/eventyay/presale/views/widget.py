@@ -178,7 +178,7 @@ def widget_js(request, lang, **kwargs):
 
     if not resp:
         data = generate_widget_js(lang).encode()
-        checksum = hashlib.sha1(data).hexdigest()
+        checksum = hashlib.sha1(data, usedforsecurity=False).hexdigest()
         if not settings.DEBUG:
             newname = default_storage.save('widget/widget.{}.{}.js'.format(lang, checksum), ContentFile(data))
             gs.settings.set('widget_file_{}'.format(lang), 'file://' + newname)

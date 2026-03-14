@@ -91,7 +91,7 @@ def compile_scss(object, file='main.scss', fonts=True):
 
     sasssrc = '\n'.join(sassrules)
 
-    srcchecksum = hashlib.sha1(sasssrc.encode('utf-8')).hexdigest()
+    srcchecksum = hashlib.sha1(sasssrc.encode('utf-8'), usedforsecurity=False).hexdigest()
 
     cp = cache.get_or_set('sass_compile_prefix', now().isoformat())
     css = cache.get('sass_compile_{}_{}'.format(cp, srcchecksum))
@@ -108,7 +108,7 @@ def compile_scss(object, file='main.scss', fonts=True):
         css = cssf.output()
         cache.set('sass_compile_{}_{}'.format(cp, srcchecksum), css, 600)
 
-    checksum = hashlib.sha1(css.encode('utf-8')).hexdigest()
+    checksum = hashlib.sha1(css.encode('utf-8'), usedforsecurity=False).hexdigest()
     return css, checksum
 
 

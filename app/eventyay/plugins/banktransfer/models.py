@@ -72,7 +72,7 @@ class BankTransaction(models.Model):
 
     def calculate_checksum(self):
         clean = re.compile('[^a-zA-Z0-9.-]')
-        hasher = hashlib.sha1()
+        hasher = hashlib.sha1(usedforsecurity=False)
         hasher.update(clean.sub('', self.payer.lower()).encode('utf-8'))
         hasher.update(clean.sub('', self.reference.lower()).encode('utf-8'))
         hasher.update(clean.sub('', str(self.amount).lower()).encode('utf-8'))

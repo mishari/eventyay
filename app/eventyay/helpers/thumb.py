@@ -76,7 +76,7 @@ def create_thumbnail(sourcename, size):
     if crop:
         image = image.crop(crop)
 
-    checksum = hashlib.md5(image.tobytes()).hexdigest()
+    checksum = hashlib.md5(image.tobytes(), usedforsecurity=False).hexdigest()
     name = checksum + '.' + size.replace('^', 'c') + '.png'
     buffer = BytesIO()
     if image.mode not in ('1', 'L', 'RGB', 'RGBA'):
