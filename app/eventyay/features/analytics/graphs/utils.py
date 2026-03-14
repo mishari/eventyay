@@ -75,7 +75,7 @@ def median_value(queryset, term):
     if not count:
         return timedelta(seconds=0)
     if count % 2 == 1:
-        return values[int(round(count / 2))]
+        return values[count // 2]
     else:
         llim = max(0, int(count / 2 - 1))
         ulim = max(0, int(count / 2 + 1))

@@ -191,7 +191,6 @@ def reactivate_order(order: Order, force: bool = False, user: User = None, auth=
                     for gc in position.issued_gift_cards.all():
                         gc = GiftCard.objects.select_for_update().get(pk=gc.pk)
                         gc.transactions.create(value=position.price, order=order)
-                        break
         else:
             raise OrderError(is_available)
 
@@ -720,7 +719,6 @@ def _check_positions(
             and not cp.is_bundled
         ):
             delete(cp)
-            cp.delete()
             err = error_messages['voucher_required']
             break
 

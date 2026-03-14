@@ -125,6 +125,8 @@ def widget_script(request, organizer=None, event=None, **kwargs):
     # by about 80% for the schedule.js file, which is the largest file on the
     # main schedule page).
     file_path = finders.find(WIDGET_PATH)
+    if not file_path:
+        raise Http404
     with open(file_path, encoding='utf-8') as fp:
         code = fp.read()
     data = code.encode()

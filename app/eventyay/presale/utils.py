@@ -52,8 +52,6 @@ def _detect_event(request, require_live=True, require_plugin=None):
                 slug=url.kwargs['event'],
                 organizer=request.organizer,
             )
-            request.organizer = request.organizer
-
             # If this event has a custom domain, send the user there
             domain = get_event_domain(request.event)
             if domain:

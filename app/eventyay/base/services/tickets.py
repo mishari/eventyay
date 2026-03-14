@@ -177,7 +177,7 @@ def get_tickets_for_order(order, base_position=None):
                         ct,
                     )
                 )
-            except:
+            except Exception:
                 logger.exception('Failed to generate ticket.')
         else:
             for pos in positions:
@@ -213,7 +213,7 @@ def get_tickets_for_order(order, base_position=None):
                             ct.extension,
                         )
                     tickets.append((fname, ct))
-                except:
+                except Exception:
                     logger.exception('Failed to generate ticket.')
 
     return tickets

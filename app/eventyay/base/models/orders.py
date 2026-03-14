@@ -92,7 +92,7 @@ class SecureOrderQuerySet(models.QuerySet):
         try:
             order = self.get(code=code)
         except Order.DoesNotExist:
-            hash_compare(order.tagged_secret(tag, dummy_secret), received_secret)
+            hash_compare(dummy_secret, received_secret)
             raise
 
         order_secret = order.tagged_secret(tag, secret_length) if tag else order.secret

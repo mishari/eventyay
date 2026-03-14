@@ -67,7 +67,7 @@ class ActionView(View):
                 provider='manual',
                 state__in=(
                     OrderRefund.REFUND_STATE_CREATED,
-                    OrderRefund.REFUND_STATE_CREATED,
+                    OrderRefund.REFUND_STATE_TRANSIT,
                 ),
             ).first()
             p = trans.order.payments.filter(

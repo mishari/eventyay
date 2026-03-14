@@ -274,7 +274,7 @@ def mail(
                         DeprecationWarning,
                     )
                     body_html = renderer.render(content_plain, signature, raw_subject, order)
-            except:
+            except Exception:
                 logger.exception('Could not render HTML body')
                 body_html = None
 
@@ -407,8 +407,8 @@ def mail_send_task(
                                 for a in args:
                                     try:
                                         email.attach(*a)
-                                    except:
-                                        pass
+                                    except Exception:
+                                        logger.warning('Failed to attach file to email', exc_info=True)
                             else:
                                 message = (
                                     f'Attachment have not been send because {attach_size} bytes are '
@@ -455,7 +455,7 @@ def mail_send_task(
                                 inv.file.file.read(),
                                 'application/pdf',
                             )
-                    except:
+                    except Exception:
                         logger.exception('Could not attach invoice to email')
                         pass
 
@@ -468,7 +468,7 @@ def mail_send_task(
                             cf.file.file.read(),
                             cf.type,
                         )
-                    except:
+                    except Exception:
                         logger.exception('Could not attach file to email')
                         pass
 
@@ -631,7 +631,7 @@ def attach_cid_images(msg, cid_images, verify_ssl=True):
                 mime_image = convert_image_to_cid(image, cid, verify_ssl)
                 if mime_image:
                     msg.attach(mime_image)
-            except:
+            except Exception:
                 logger.exception('ERROR attaching CID image %s[%s]' % (cid, image))
 
 
@@ -672,7 +672,7 @@ def convert_image_to_cid(image_src, cid_id, verify_ssl=True):
         mime_image.add_header('Content-ID', '<%s>' % cid_id)
 
         return mime_image
-    except:
+    except Exception:
         logger.exception('ERROR creating mime_image %s[%s]' % (cid_id, image_src))
         return None
 
