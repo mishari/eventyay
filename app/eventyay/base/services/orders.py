@@ -1806,6 +1806,34 @@ class OrderChangeManager:
             if avail[0] != Quota.AVAILABILITY_OK or (avail[1] is not None and avail[1] < diff):
                 raise OrderError(self.error_messages['quota'].format(name=quota.name))
 
+    def _cancel_open_payment_if_present(self):
+        """Cancel the current open payment, logging success or failure."""
+        if not self.open_payment:
+            return
+        try:
+            with transaction.atomic():
+                self.open_payment.payment_provider.cancel_payment(self.open_payment)
+                self.order.log_action(
+                    'eventyay.event.order.payment.canceled',
+                    {
+                        'local_id': self.open_payment.local_id,
+                        'provider': self.open_payment.provider,
+                    },
+                    user=self.user,
+                    auth=self.auth,
+                )
+        except PaymentException as e:
+            self.order.log_action(
+                'eventyay.event.order.payment.canceled.failed',
+                {
+                    'local_id': self.open_payment.local_id,
+                    'provider': self.open_payment.provider,
+                    'error': str(e),
+                },
+                user=self.user,
+                auth=self.auth,
+            )
+
     def _check_paid_price_change(self):
         if self.order.status == Order.STATUS_PAID and self._totaldiff > 0:
             if self.order.pending_sum > Decimal('0.00'):
@@ -1821,55 +1849,10 @@ class OrderChangeManager:
             if self.order.pending_sum <= Decimal('0.00') and not self.order.require_approval:
                 self.order.status = Order.STATUS_PAID
                 self.order.save()
-            elif self.open_payment:
-                try:
-                    with transaction.atomic():
-                        self.open_payment.payment_provider.cancel_payment(self.open_payment)
-                        self.order.log_action(
-                            'eventyay.event.order.payment.canceled',
-                            {
-                                'local_id': self.open_payment.local_id,
-                                'provider': self.open_payment.provider,
-                            },
-                            user=self.user,
-                            auth=self.auth,
-                        )
-                except PaymentException as e:
-                    self.order.log_action(
-                        'eventyay.event.order.payment.canceled.failed',
-                        {
-                            'local_id': self.open_payment.local_id,
-                            'provider': self.open_payment.provider,
-                            'error': str(e),
-                        },
-                        user=self.user,
-                        auth=self.auth,
-                    )
+            else:
+                self._cancel_open_payment_if_present()
         elif self.order.status in (Order.STATUS_PENDING, Order.STATUS_EXPIRED) and self._totaldiff > 0:
-            if self.open_payment:
-                try:
-                    with transaction.atomic():
-                        self.open_payment.payment_provider.cancel_payment(self.open_payment)
-                        self.order.log_action(
-                            'eventyay.event.order.payment.canceled',
-                            {
-                                'local_id': self.open_payment.local_id,
-                                'provider': self.open_payment.provider,
-                            },
-                            user=self.user,
-                            auth=self.auth,
-                        )
-                except PaymentException as e:
-                    self.order.log_action(
-                        'eventyay.event.order.payment.canceled.failed',
-                        {
-                            'local_id': self.open_payment.local_id,
-                            'provider': self.open_payment.provider,
-                            'error': str(e),
-                        },
-                        user=self.user,
-                        auth=self.auth,
-                    )
+            self._cancel_open_payment_if_present()
 
     def _check_paid_to_free(self):
         if (
