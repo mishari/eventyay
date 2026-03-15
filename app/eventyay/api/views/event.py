@@ -54,6 +54,23 @@ from eventyay.eventyay_common.video.permissions import VIDEO_TRAIT_ROLE_MAP
 
 logger = logging.getLogger(__name__)
 
+
+def _extract_bearer_token(request):
+    """Parse and validate the Authorization: Bearer <token> header.
+
+    Returns the raw token bytes on success.
+    Raises AuthenticationFailed when the header is missing or malformed.
+    """
+    auth_header = get_authorization_header(request).split()
+    if not auth_header or auth_header[0].lower() != b"bearer":
+        raise exceptions.AuthenticationFailed("Authorization header with Bearer token required.")
+    if len(auth_header) == 1:
+        raise exceptions.AuthenticationFailed("Invalid token header. No credentials provided.")
+    if len(auth_header) > 2:
+        raise exceptions.AuthenticationFailed("Invalid token header. Token string should not contain spaces.")
+    return auth_header[1]
+
+
 with scopes_disabled():
 
     class EventFilter(FilterSet):
@@ -574,20 +591,9 @@ class CreateEventView(APIView):
 
     @staticmethod
     def get_payload_from_token(request):
-        auth_header = get_authorization_header(request).split()
-        if auth_header and auth_header[0].lower() == b"bearer":
-            if len(auth_header) == 1:
-                raise exceptions.AuthenticationFailed(
-                    "Invalid token header. No credentials provided."
-                )
-            elif len(auth_header) > 2:
-                raise exceptions.AuthenticationFailed(
-                    "Invalid token header. Token string should not contain spaces."
-                )
+        token = _extract_bearer_token(request)
         try:
-            payload = jwt.decode(
-                auth_header[1], settings.SECRET_KEY, algorithms=["HS256"]
-            )
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
             raise exceptions.AuthenticationFailed("Token has expired")
         except jwt.DecodeError:
@@ -648,17 +654,8 @@ class UserFavouriteView(APIView):
     @staticmethod
     def get_uid_from_token(request, event_id):
         event = get_object_or_404(Event, id=event_id)
-        auth_header = get_authorization_header(request).split()
-        if auth_header and auth_header[0].lower() == b"bearer":
-            if len(auth_header) == 1:
-                raise exceptions.AuthenticationFailed(
-                    "Invalid token header. No credentials provided."
-                )
-            elif len(auth_header) > 2:
-                raise exceptions.AuthenticationFailed(
-                    "Invalid token header. Token string should not contain spaces."
-                )
-        token_decode = event.decode_token(token=auth_header[1])
+        token = _extract_bearer_token(request)
+        token_decode = event.decode_token(token=token)
         return token_decode.get("uid")
 
 
