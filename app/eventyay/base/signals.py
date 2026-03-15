@@ -239,7 +239,7 @@ class GlobalSignal(django.dispatch.Signal):
 class DeprecatedSignal(django.dispatch.Signal):
     def connect(self, receiver, sender=None, weak=True, dispatch_uid=None):
         warnings.warn('This signal is deprecated and will soon be removed', stacklevel=3)
-        super().connect(receiver, sender=None, weak=True, dispatch_uid=None)
+        super().connect(receiver, sender=sender, weak=weak, dispatch_uid=dispatch_uid)
 
 
 activitylog_display = EventPluginSignal()
