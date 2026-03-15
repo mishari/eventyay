@@ -1,3 +1,4 @@
+import hmac
 import importlib.util
 import inspect
 import json
@@ -102,16 +103,12 @@ class OrderDetailMixin(NoSearchIndexViewMixin):
     def order(self):
         order = self.request.event.orders.filter(code=self.kwargs['order']).select_related('event').first()
         if order:
-            if order.secret.lower() == self.kwargs['secret'].lower():
+            if hmac.compare_digest(order.secret.lower(), self.kwargs['secret'].lower()):
                 return order
-            else:
-                return None
         else:
-            # Do a comparison as well to harden timing attacks
-            if 'abcdefghijklmnopq'.lower() == self.kwargs['secret'].lower():
-                return None
-            else:
-                return None
+            # Constant-time comparison to prevent timing-based order enumeration
+            hmac.compare_digest('abcdefghijklmnopq', self.kwargs['secret'].lower())
+        return None
 
     def get_order_url(self):
         return eventreverse(

@@ -91,7 +91,7 @@ class LargeResultSetPage(collections.abc.Sequence):
     def has_next(self):
         try:
             return self[self.paginator.per_page - 1]
-        except:
+        except IndexError:
             return False
 
     def has_previous(self):

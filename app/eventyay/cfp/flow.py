@@ -77,9 +77,9 @@ def serialize_value(value):
 
 
 def cfp_session(request):
-    request.session.modified = True
     if 'cfp' not in request.session or not request.session['cfp']:
         request.session['cfp'] = {}
+        request.session.modified = True
     session_data = request.session['cfp']
     key = request.resolver_match.kwargs['tmpid']
     if key not in session_data:
@@ -88,6 +88,7 @@ def cfp_session(request):
             'initial': {},
             'files': {},
         }
+        request.session.modified = True
     return session_data[key]
 
 
