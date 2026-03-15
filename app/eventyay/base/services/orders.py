@@ -404,6 +404,29 @@ def deny_order(order, comment='', user=None, send_mail: bool = True, auth=None):
     return order.pk
 
 
+def _invalidate_positions(positions, event, mark_canceled=False):
+    """Revoke vouchers and invalidate ticket secrets for a collection of positions.
+
+    When mark_canceled=True, also sets position.canceled = True and saves each
+    position with update_fields=['canceled', 'secret'].  When False, the caller
+    is responsible for saving (assign_ticket_secret is called with save=True).
+    """
+    for position in positions:
+        if mark_canceled:
+            position.canceled = True
+        if position.voucher:
+            Voucher.objects.filter(pk=position.voucher.pk).update(redeemed=Greatest(0, F('redeemed') - 1))
+        assign_ticket_secret(
+            event=event,
+            position=position,
+            force_invalidate_if_revokation_list_used=True,
+            force_invalidate=False,
+            save=not mark_canceled,
+        )
+        if mark_canceled:
+            position.save(update_fields=['canceled', 'secret'])
+
+
 def _cancel_order(
     order,
     user=None,
@@ -458,18 +481,7 @@ def _cancel_order(
 
         if cancellation_fee:
             with order.event.lock():
-                for position in order.positions.all():
-                    if position.voucher:
-                        Voucher.objects.filter(pk=position.voucher.pk).update(redeemed=Greatest(0, F('redeemed') - 1))
-                    position.canceled = True
-                    assign_ticket_secret(
-                        event=order.event,
-                        position=position,
-                        force_invalidate_if_revokation_list_used=True,
-                        force_invalidate=False,
-                        save=False,
-                    )
-                    position.save(update_fields=['canceled', 'secret'])
+                _invalidate_positions(order.positions.all(), order.event, mark_canceled=True)
                 new_fee = cancellation_fee
                 for fee in order.fees.all():
                     if keep_fees and fee in keep_fees:
@@ -503,16 +515,7 @@ def _cancel_order(
                 order.cancellation_date = now()
                 order.save(update_fields=['status', 'cancellation_date'])
 
-            for position in order.positions.all():
-                assign_ticket_secret(
-                    event=order.event,
-                    position=position,
-                    force_invalidate_if_revokation_list_used=True,
-                    force_invalidate=False,
-                    save=True,
-                )
-                if position.voucher:
-                    Voucher.objects.filter(pk=position.voucher.pk).update(redeemed=Greatest(0, F('redeemed') - 1))
+            _invalidate_positions(order.positions.all(), order.event, mark_canceled=False)
 
         order.log_action(
             'eventyay.event.order.canceled',
@@ -2337,7 +2340,6 @@ class OrderChangeManager:
             state__in=(
                 OrderRefund.REFUND_STATE_DONE,
                 OrderRefund.REFUND_STATE_TRANSIT,
-                OrderRefund.REFUND_STATE_DONE,
             )
         ).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         return payment_sum - refund_sum
