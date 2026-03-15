@@ -257,13 +257,11 @@ class CartManager:
                 err = error_messages['some_subevent_not_started']
                 cp.addons.all().delete()
                 cp.delete()
-
-            if cp.subevent and cp.subevent.presale_end and self.now_dt > cp.subevent.presale_end:
+            elif cp.subevent and cp.subevent.presale_end and self.now_dt > cp.subevent.presale_end:
                 err = error_messages['some_subevent_ended']
                 cp.addons.all().delete()
                 cp.delete()
-
-            if cp.subevent:
+            elif cp.subevent:
                 tlv = self.event.settings.get('payment_term_last', as_type=RelativeDateWrapper)
                 if tlv:
                     term_last = make_aware(

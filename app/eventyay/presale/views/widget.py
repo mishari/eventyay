@@ -85,6 +85,8 @@ def widget_css(request, **kwargs):
     tpl = get_template('pretixpresale/widget_dummy.html')
     et = html.fromstring(tpl.render({})).xpath('/html/head/link')[0].attrib['href'].replace(settings.STATIC_URL, '')
     f = finders.find(et)
+    if f is None:
+        raise Http404(f'Static file not found: {et}')
     resp = FileResponse(open(f, 'rb'), content_type='text/css')
     return resp
 
@@ -142,6 +144,8 @@ def generate_widget_js(lang):
         ]
         for fname in files:
             f = finders.find(fname)
+            if f is None:
+                raise Http404(f'Static file not found: {fname}')
             with open(f, 'r', encoding='utf-8') as fp:
                 code.append(fp.read())
 
