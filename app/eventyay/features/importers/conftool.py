@@ -29,7 +29,7 @@ def escape_markdown(text):
 
 def fetch_schedule_from_conftool(url, password):
     nonce = int(time.time())
-    passhash = hashlib.sha256((str(nonce) + password).encode()).hexdigest()
+    passhash = hashlib.sha256((str(nonce) + password).encode(), usedforsecurity=False).hexdigest()
     r = requests.get(
         f"{url}?nonce={nonce}&passhash={passhash}&page=adminExport&export_select=sessions&form_include_deleted=0"
         f"&form_export_format=xml&cmd_create_export=true&form_export_sessions_options[]=presentations"
@@ -195,7 +195,7 @@ def fetch_schedule_from_conftool(url, password):
 def mirror_conftool_file(event, url, password, nonce, preview=False):
     logger.debug(f"Downloading {url}…")
     try:
-        passhash = hashlib.sha256((str(nonce) + password).encode()).hexdigest()
+        passhash = hashlib.sha256((str(nonce) + password).encode(), usedforsecurity=False).hexdigest()
         r = requests.get(
             f"{url.replace('index.php', 'rest.php')}&nonce={nonce}&passhash={passhash}",
             timeout=60,
@@ -228,7 +228,7 @@ def mirror_conftool_file(event, url, password, nonce, preview=False):
 
         c = ContentFile(r.content)
         c.seek(0)
-        contenthash = hashlib.sha256(c.read()).hexdigest()
+        contenthash = hashlib.sha256(c.read(), usedforsecurity=False).hexdigest()
         filename = f"poster_{contenthash}.{content_types[content_type]}"
 
         sf, created = StoredFile.objects.get_or_create(
@@ -285,7 +285,7 @@ def create_posters_from_conftool(
     event, url, password, status="-3", session_as_category=True
 ):
     nonce = int(time.time())
-    passhash = hashlib.sha256((str(nonce) + password).encode()).hexdigest()
+    passhash = hashlib.sha256((str(nonce) + password).encode(), usedforsecurity=False).hexdigest()
     r = requests.get(
         f"{url}?nonce={nonce}&passhash={passhash}&page=adminExport&export_select=papers"
         f"&form_export_papers_options[]=authors_extended_columns"

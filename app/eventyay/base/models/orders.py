@@ -251,7 +251,7 @@ class Order(LockModel, LoggedModel):
         self.delete()
 
     def email_confirm_hash(self):
-        return hashlib.sha256(settings.SECRET_KEY.encode() + self.secret.encode()).hexdigest()[:9]
+        return hashlib.sha256(settings.SECRET_KEY.encode() + self.secret.encode(), usedforsecurity=False).hexdigest()[:9]
 
     @classmethod
     def user_has_existing_order(cls, event, email):

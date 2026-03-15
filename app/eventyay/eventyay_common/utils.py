@@ -45,7 +45,7 @@ def encode_email(email):
     @param email: The user's email address.
     @return: The UID token, which consists of the first 7 characters of the hashed email.
     """
-    hash_object = hashlib.sha256(email.encode())
+    hash_object = hashlib.sha256(email.encode(), usedforsecurity=False)
     hash_hex = hash_object.hexdigest()
     short_hash = hash_hex[:7]
     return short_hash.upper()

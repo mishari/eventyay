@@ -100,7 +100,8 @@ async def videoroom_add_token_if_exists(server, room_data, token, audiobridge=Fa
                         "body": {
                             "request": "allowed",
                             "secret": hashlib.sha256(
-                                f"{server.room_create_key}:secret:{room_data['seed']}".encode()
+                                f"{server.room_create_key}:secret:{room_data['seed']}".encode(),
+                                usedforsecurity=False,
                             ).hexdigest(),
                             "room": room_data["roomId"],
                             "action": "add",
@@ -143,7 +144,8 @@ async def videoroom_add_token_if_exists(server, room_data, token, audiobridge=Fa
                             "body": {
                                 "request": "allowed",
                                 "secret": hashlib.sha256(
-                                    f"{server.room_create_key}:secret:{room_data['seed']}".encode()
+                                    f"{server.room_create_key}:secret:{room_data['seed']}".encode(),
+                                    usedforsecurity=False,
                                 ).hexdigest(),
                                 "room": room_data["roomId"],
                                 "action": "add",
@@ -211,7 +213,8 @@ async def create_videoroom(
                         "admin_key": server.room_create_key,
                         "permanent": False,
                         "secret": hashlib.sha256(
-                            f"{server.room_create_key}:secret:{seed}".encode()
+                            f"{server.room_create_key}:secret:{seed}".encode(),
+                            usedforsecurity=False,
                         ).hexdigest(),
                         "is_private": True,
                         "require_pvtid": True,
@@ -264,7 +267,8 @@ async def create_videoroom(
                             "admin_key": server.room_create_key,
                             "permanent": False,
                             "secret": hashlib.sha256(
-                                f"{server.room_create_key}:secret:{seed}".encode()
+                                f"{server.room_create_key}:secret:{seed}".encode(),
+                                usedforsecurity=False,
                             ).hexdigest(),
                             "audiolevel_ext": True,
                             "audiolevel_event": True,

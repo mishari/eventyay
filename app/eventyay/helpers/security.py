@@ -13,7 +13,7 @@ class SessionReauthRequired(Exception):  # NOQA: N818
 
 
 def get_user_agent_hash(request):
-    return hashlib.sha256(request.headers['User-Agent'].encode()).hexdigest()
+    return hashlib.sha256(request.headers['User-Agent'].encode(), usedforsecurity=False).hexdigest()
 
 
 def assert_session_valid(request):

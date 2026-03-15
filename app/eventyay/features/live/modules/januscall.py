@@ -71,7 +71,8 @@ class JanusCallModule(BaseModule):
             raise ConsumerException("janus.join.missing_profile")
 
         user_secret_token = hashlib.sha256(
-            f"januscall:usersecret:{settings.SECRET_KEY}:{self.consumer.user.pk}".encode()
+            f"januscall:usersecret:{settings.SECRET_KEY}:{self.consumer.user.pk}".encode(),
+            usedforsecurity=False,
         ).hexdigest()
         async with aredis() as redis:
             async with Lock(

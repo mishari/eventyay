@@ -196,7 +196,7 @@ def encode_email(email):
     @param email: User's email
     @return: encoded string
     """
-    return hashlib.sha256(email.encode()).hexdigest()[:7].upper()
+    return hashlib.sha256(email.encode(), usedforsecurity=False).hexdigest()[:7].upper()
 
 
 def get_schedule_exporter_content(request, exporter_name, schedule, token=None):

@@ -183,7 +183,7 @@ def collect_telemetry_payload() -> dict:
     
     # Get canonical base URL (hashed for privacy)
     base_url = getattr(settings, 'SITE_URL', '') or ''
-    base_url_hash = hashlib.sha256(base_url.encode()).hexdigest()[:16] if base_url else ''
+    base_url_hash = hashlib.sha256(base_url.encode(), usedforsecurity=False).hexdigest()[:16] if base_url else ''
     
     # Collect model counts
     try:

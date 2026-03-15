@@ -25,7 +25,7 @@ def conftool_update_schedule(event):
 
     d = fetch_schedule_from_conftool(u, p)
     v = d.pop("version")
-    checksum = hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()
+    checksum = hashlib.sha256(json.dumps(d, sort_keys=True).encode(), usedforsecurity=False).hexdigest()
     d["version"] = v
     document = json.dumps(d, sort_keys=True)
 

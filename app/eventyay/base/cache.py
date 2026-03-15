@@ -29,7 +29,7 @@ class NamespacedCache:
         key = '%s:%d:%s' % (self.prefixkey, prefix, original_key)
         if len(key) > 200:  # Hash long keys, as memcached has a length limit
             # TODO: Use a more efficient, non-cryptographic hash algorithm
-            key = hashlib.sha256(key.encode('UTF-8')).hexdigest()
+            key = hashlib.sha256(key.encode('UTF-8'), usedforsecurity=False).hexdigest()
         return key
 
     def _strip_prefix(self, key: str) -> str:

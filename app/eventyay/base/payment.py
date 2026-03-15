@@ -243,7 +243,7 @@ class BasePaymentProvider:
             self.event,
             'presale:event.payment.unlock',
             kwargs={
-                'hash': hashlib.sha256((self.settings._hidden_seed + self.event.slug).encode()).hexdigest(),
+                'hash': hashlib.sha256((self.settings._hidden_seed + self.event.slug).encode(), usedforsecurity=False).hexdigest(),
             },
         )
 
@@ -540,7 +540,7 @@ class BasePaymentProvider:
 
         if self.settings.get('_hidden', as_type=bool):
             hashes = request.session.get('pretix_unlock_hashes', [])
-            if hashlib.sha256((self.settings._hidden_seed + self.event.slug).encode()).hexdigest() not in hashes:
+            if hashlib.sha256((self.settings._hidden_seed + self.event.slug).encode(), usedforsecurity=False).hexdigest() not in hashes:
                 return False
 
         def get_invoice_address():
