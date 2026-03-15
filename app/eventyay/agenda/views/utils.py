@@ -86,11 +86,6 @@ def load_starred_ics_token(token: str, *, event=None):
         return None, None
 
 
-def parse_ics_token(token: str, *, event=None):
-    user_id, _expiry_dt = load_starred_ics_token(token, event=event)
-    return user_id
-
-
 def redirect_to_presale_with_warning(request, message):
     """Redirect to the event presale area with a warning message."""
     messages.warning(request, message)
@@ -210,7 +205,7 @@ def get_schedule_exporter_content(request, exporter_name, schedule, token=None):
         else:
             return HttpResponseRedirect(request.event.urls.login)
     if token and "-my" in exporter.identifier:
-        user_id = parse_ics_token(token, event=request.event)
+        user_id, _ = load_starred_ics_token(token, event=request.event)
         if not user_id:
             return
         talk_ids = list(
