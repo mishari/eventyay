@@ -26,6 +26,7 @@ class CheckInListShow(EventPermissionRequiredMixin, PaginationMixin, ListView):
     model = Checkin
     context_object_name = 'entries'
     template_name = 'pretixcontrol/checkin/index.html'
+    # GET requires can_view_orders; POST additionally requires can_change_orders (checked in post())
     permission = 'can_view_orders'
 
     def get_queryset(self, filter=True):

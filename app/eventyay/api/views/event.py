@@ -50,7 +50,6 @@ from eventyay.base.settings import SETTINGS_AFFECTING_CSS
 from eventyay.helpers.dicts import merge_dicts
 from eventyay.presale.style import regenerate_css
 from eventyay.presale.views.organizer import filter_qs_by_attr
-from eventyay.api.utils import get_protocol
 from eventyay.eventyay_common.video.permissions import VIDEO_TRAIT_ROLE_MAP
 
 logger = logging.getLogger(__name__)
@@ -548,7 +547,7 @@ class CreateEventView(APIView):
                     )
                 # Legacy eventyay-talk schedule connection is removed; video gets configured elsewhere.
                 site_url = settings.SITE_URL
-                protocol = get_protocol(site_url)
+                protocol = urlparse(site_url).scheme.lower()
                 event.domain = "{}://{}".format(protocol, domain_path)
                 return JsonResponse(model_to_dict(event, exclude=["roles"]), status=201)
             except IntegrityError as e:

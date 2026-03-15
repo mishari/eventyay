@@ -423,7 +423,7 @@ def login(
 
 @database_sync_to_async
 @atomic
-def get_blocked_users(user, event) -> bool:
+def get_blocked_users(user, event) -> list:
     return [
         u.serialize_public(trait_badges_map=event.config.get("trait_badges_map"))
         for u in user.blocked_users.all()

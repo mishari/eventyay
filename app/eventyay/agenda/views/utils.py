@@ -190,15 +190,6 @@ def find_schedule_exporter(request, name, public=False):
     return None
 
 
-def encode_email(email):
-    """
-    Encode email to a short hash and get first 7 characters
-    @param email: User's email
-    @return: encoded string
-    """
-    return hashlib.sha256(email.encode(), usedforsecurity=False).hexdigest()[:7].upper()
-
-
 def get_schedule_exporter_content(request, exporter_name, schedule, token=None):
     is_organizer = request.user.has_perm('base.orga_view_schedule', request.event)
     exporter = find_schedule_exporter(request, exporter_name, public=not is_organizer)

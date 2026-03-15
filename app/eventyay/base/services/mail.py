@@ -131,7 +131,7 @@ def mail(
 
     :param attach_cached_files: A list of cached file to attach to this email.
 
-    :raises MailOrderException: on obvious, immediate failures. Not raising an exception does not necessarily mean
+    :raises SendMailException: on obvious, immediate failures. Not raising an exception does not necessarily mean
         that the email has been sent, just that it has been queued by the email backend.
     """
     if email == INVALID_ADDRESS:

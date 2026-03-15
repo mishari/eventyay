@@ -346,7 +346,7 @@ class User(
     # def is_superuser(self):
     #    return False
 
-    def get_short_name(self) -> str:
+    def get_short_name(self) -> str | None:
         """
         Returns the first of the following user properties that is found to exist:
 
@@ -360,7 +360,7 @@ class User(
         else:
             return self.email
 
-    def get_full_name(self) -> str:
+    def get_full_name(self) -> str | None:
         """
         Returns the first of the following user properties that is found to exist:
 
@@ -837,12 +837,16 @@ the eventyay team"""
     # shred.alters_data = True
 
     @cached_property
-    def guid(self) -> str:
+    def guid(self) -> str | None:
+        if not self.email:
+            return None
         return str(uuid.uuid5(uuid.NAMESPACE_URL, f'acct:{self.email.strip()}'))
 
     @cached_property
-    def gravatar_parameter(self) -> str:
-        return md5(self.email.strip().encode()).hexdigest()
+    def gravatar_parameter(self) -> str | None:
+        if not self.email:
+            return None
+        return md5(self.email.strip().encode(), usedforsecurity=False).hexdigest()
 
     @cached_property
     def has_avatar(self) -> bool:

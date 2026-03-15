@@ -24,7 +24,8 @@ from django_scopes import scope
 from i18nfield.utils import I18nJSONEncoder
 
 from eventyay.agenda.signals import register_recording_provider
-from eventyay.agenda.views.utils import encode_email, is_email_like
+from eventyay.agenda.views.utils import is_email_like
+from eventyay.eventyay_common.utils import encode_email
 from eventyay.cfp.views.event import EventPageMixin
 from eventyay.common.text.phrases import phrases
 from eventyay.common.urls import get_base_url

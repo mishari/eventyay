@@ -663,7 +663,7 @@ class BasePaymentProvider:
         """
         raise NotImplementedError()  # NOQA
 
-    def execute_payment(self, request: HttpRequest, payment: OrderPayment) -> str:
+    def execute_payment(self, request: HttpRequest, payment: OrderPayment) -> str | None:
         """
         After the user has confirmed their purchase, this method will be called to complete
         the payment process. This is the place to actually move the money if applicable.
@@ -842,7 +842,7 @@ class BasePaymentProvider:
         """
         raise PaymentException(_('Automatic refunds are not supported by this payment provider.'))
 
-    def new_refund_control_form_render(self, request: HttpRequest, order: Order) -> str:
+    def new_refund_control_form_render(self, request: HttpRequest, order: Order) -> str | None:
         """
         Render a form that will be shown to backend users when trying to create a new refund.
 
