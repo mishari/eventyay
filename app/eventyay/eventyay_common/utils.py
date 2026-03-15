@@ -61,9 +61,7 @@ def check_create_permission(request):
     is_create_permission = 'can_create_events' in request.user.get_organizer_permission_set(request.organizer)
     is_active_staff_session = request.user.has_active_staff_session(request.session.session_key)
 
-    if is_create_permission or is_active_staff_session:
-        return True
-    return False
+    return is_create_permission or is_active_staff_session
 
 
 def get_subevent(request: HttpRequest) -> Optional[SubEvent]:
