@@ -152,7 +152,7 @@ class FileCleanupMixin:
 
         try:
             pre_save_instance = self.__class__.objects.get(pk=self.pk)
-        except Exception:
+        except self.__class__.DoesNotExist:
             return super().save(*args, **kwargs)
 
         for field in self._file_fields:

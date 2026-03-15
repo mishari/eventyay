@@ -37,39 +37,39 @@ class GeoCodeView(LoginRequiredMixin, View):
     def _use_opencage(self, q):
         gs = GlobalSettingsObject()
 
-        r = requests.get(
+        response = requests.get(
             'https://api.opencagedata.com/geocode/v1/json?q={}&key={}'.format(quote(q), gs.settings.opencagedata_apikey),
             timeout=30,
         )
-        r.raise_for_status()
-        d = r.json()
+        response.raise_for_status()
+        d = response.json()
         res = [
             {
-                'formatted': r['formatted'],
-                'lat': r['geometry']['lat'],
-                'lon': r['geometry']['lng'],
+                'formatted': result['formatted'],
+                'lat': result['geometry']['lat'],
+                'lon': result['geometry']['lng'],
             }
-            for r in d['results']
+            for result in d['results']
         ]
         return res
 
     def _use_mapquest(self, q):
         gs = GlobalSettingsObject()
 
-        r = requests.get(
+        response = requests.get(
             'https://www.mapquestapi.com/geocoding/v1/address?location={}&key={}'.format(
                 quote(q), gs.settings.mapquest_apikey
             ),
             timeout=30,
         )
-        r.raise_for_status()
-        d = r.json()
+        response.raise_for_status()
+        d = response.json()
         res = [
             {
                 'formatted': q,
-                'lat': r['locations'][0]['latLng']['lat'],
-                'lon': r['locations'][0]['latLng']['lng'],
+                'lat': result['locations'][0]['latLng']['lat'],
+                'lon': result['locations'][0]['latLng']['lng'],
             }
-            for r in d['results']
+            for result in d['results']
         ]
         return res
