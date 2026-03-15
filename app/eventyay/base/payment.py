@@ -124,7 +124,7 @@ class BasePaymentProvider:
         return self.settings.get('_enabled', as_type=bool)
 
     @property
-    def test_mode_message(self) -> str:
+    def test_mode_message(self) -> str | None:
         """
         If this property is set to a string, this will be displayed when this payment provider is selected
         while the event is in test mode. You should use it to explain to your user how your plugin behaves,

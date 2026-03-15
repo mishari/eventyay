@@ -150,10 +150,6 @@ error_messages = {
 logger = logging.getLogger(__name__)
 
 
-def mark_order_paid(*args, **kwargs):
-    raise NotImplementedError('This method is no longer supported since pretix 1.17.')
-
-
 def reactivate_order(order: Order, force: bool = False, user: User = None, auth=None):
     """
     Reactivates a canceled order. If ``force`` is not set to ``True``, this will fail if there is not
