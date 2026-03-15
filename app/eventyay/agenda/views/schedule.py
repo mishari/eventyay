@@ -23,6 +23,7 @@ from django_context_decorator import context
 from i18nfield.utils import I18nJSONEncoder
 
 from eventyay.agenda.views.utils import (
+    EXPORTER_SORT_ORDER,
     build_public_schedule_exporters,
     escape_json_for_script,
     get_schedule_exporter_content,
@@ -248,26 +249,10 @@ class ScheduleView(PermissionRequired, ScheduleMixin, TemplateView):
     def exporters(self):
         exporters = [exporter for exporter in get_schedule_exporters(self.request, public=True) if exporter.show_public]
 
-        order = {
-            'google-calendar': 0,
-            'webcal': 1,
-            'schedule.ics': 10,
-            'schedule.json': 11,
-            'schedule.xml': 12,
-            'schedule.xcal': 13,
-            'faved.ics': 14,
-            'my-google-calendar': 100,
-            'my-webcal': 101,
-            'schedule-my.ics': 110,
-            'schedule-my.json': 111,
-            'schedule-my.xml': 112,
-            'schedule-my.xcal': 113,
-        }
-
         def sort_key(exporter):
             identifier = exporter.identifier
-            if identifier in order:
-                return (order[identifier], exporter.verbose_name, identifier)
+            if identifier in EXPORTER_SORT_ORDER:
+                return (EXPORTER_SORT_ORDER[identifier], exporter.verbose_name, identifier)
 
             is_my = identifier.startswith('my-') or '-my' in identifier
             bucket = 50 if not is_my else 150

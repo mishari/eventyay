@@ -276,11 +276,11 @@ class SubmissionViewSet(PretalxViewSetMixin, viewsets.ModelViewSet):
     def perform_destroy(self, request, *args, **kwargs):
         self.get_object().remove(force=True, person=self.request.user)
 
-    @action(detail=True, methods=["POST"])
-    def accept(self, request, **kwargs):
+    def _dispatch_state_action(self, request, method_name):
+        """Call a named state-transition method on the submission and return serialized data."""
         try:
             submission = self.get_object()
-            submission.accept(person=request.user, orga=True)
+            getattr(submission, method_name)(person=request.user, orga=True)
             return Response(SubmissionOrgaSerializer(submission).data)
         except SubmissionError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -288,58 +288,26 @@ class SubmissionViewSet(PretalxViewSetMixin, viewsets.ModelViewSet):
             return Response(
                 {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=True, methods=["POST"])
+    def accept(self, request, **kwargs):
+        return self._dispatch_state_action(request, "accept")
 
     @action(detail=True, methods=["POST"])
     def reject(self, request, **kwargs):
-        try:
-            submission = self.get_object()
-            submission.reject(person=request.user, orga=True)
-            return Response(SubmissionOrgaSerializer(submission).data)
-        except SubmissionError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return self._dispatch_state_action(request, "reject")
 
     @action(detail=True, methods=["POST"])
     def confirm(self, request, **kwargs):
-        try:
-            submission = self.get_object()
-            submission.confirm(person=request.user, orga=True)
-            return Response(SubmissionOrgaSerializer(submission).data)
-        except SubmissionError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return self._dispatch_state_action(request, "confirm")
 
     @action(detail=True, methods=["POST"])
     def cancel(self, request, **kwargs):
-        try:
-            submission = self.get_object()
-            submission.cancel(person=request.user, orga=True)
-            return Response(SubmissionOrgaSerializer(submission).data)
-        except SubmissionError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return self._dispatch_state_action(request, "cancel")
 
     @action(detail=True, methods=["POST"], url_path="make-submitted")
     def make_submitted(self, request, **kwargs):
-        try:
-            submission = self.get_object()
-            submission.make_submitted(person=request.user, orga=True)
-            return Response(SubmissionOrgaSerializer(submission).data)
-        except SubmissionError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return self._dispatch_state_action(request, "make_submitted")
 
     @action(detail=True, methods=["POST"], url_path="add-speaker")
     def add_speaker(self, request, **kwargs):
@@ -514,7 +482,6 @@ class SubmissionFavouriteDeprecatedView(View):
         """
         try:
             user_id = request.user.id
-            # user_id = 52
             fav_talks = get_object_or_404(SubmissionFavouriteDeprecated, user=user_id)
             return JsonResponse(fav_talks.talk_list, safe=False)
         except Http404:

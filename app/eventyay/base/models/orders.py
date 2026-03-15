@@ -303,8 +303,8 @@ class Order(LockModel, LoggedModel):
             return {}
         try:
             return json.loads(self.meta_info)
-        except TypeError:
-            return None
+        except (TypeError, ValueError):
+            return {}
 
     @property
     @scopes_disabled()
