@@ -1,0 +1,161 @@
+{
+  "batch": "type_safety",
+  "batch_index": 18,
+  "assessments": {"type_safety": 40.0},
+  "dimension_notes": {
+    "type_safety": {
+      "evidence": [
+        "Virtually all production modules lack return type annotations on public functions: _perform_order, cancel_order task, _check_positions, _create_order, approve_order, deny_order, mark_order_expired, notify_user_changed_order are all unannotated",
+        "mail() function in base/services/mail.py: `context: dict[str, Any] = None` — typed as dict but default is None, making the parameter Optional[dict[str, Any]] in reality. This pattern recurs across the codebase.",
+        "perform_checkin signature: `given_answers: dict` — an unparametrized dict. The actual usage maps Question objects to answer values (QuestionOption | list | File | str), which could be TypedDict or at minimum dict[Question, Any]",
+        "BasePaymentProvider.test_mode_message annotated as -> str but returns None",
+        "BasePaymentProvider.checkout_prepare annotated -> Union[bool, str] (line 612) which is accurate, but the docstring describes only bool semantics, hiding the URL-redirect str case from casual readers",
+        "Order.STATUS_REFUNDED = 'c' is a deprecated alias equaling STATUS_CANCELED — raw string 'c' comparisons scattered in the codebase bypass this enum-like constant, risking stale comparisons against the deprecated name",
+        "OrderFee, OrderRefund state comparisons use raw string constants (e.g., OrderPayment.PAYMENT_STATE_CONFIRMED) accessed as class attributes — this is reasonable, but the state fields are typed as CharField with no Literal or Enum constraint, so invalid state strings are not caught by type checkers",
+        "In OrderChangeManager.add_position, addon_to: Order = None is typed as Order but represents an OrderPosition — the docstring at line 1710 says 'addon_to: Order' which is incorrect; addon_to should be OrderPosition | None",
+        "cancel_order task (line 2672): user: int = None — a nullable int representing a PK with no Optional annotation",
+        "The entire cfp/flow.py module has no type annotations on any public method signatures (get, post, done, get_context_data, etc.)",
+        "dict_keys signal: 203 findings reported by mechanical scan — consistent with pervasive use of dict[str, Any] rather than TypedDict for context objects passed through the email, checkin, and order pipelines"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "type_safety": {
+      "strengths": [
+        "Some core service functions use typed signatures: _check_positions(event: Event, now_dt: datetime, positions: list[CartPosition], address: InvoiceAddress = None, sales_channel='web') has partial annotations",
+        "BasePaymentProvider uses meaningful type annotations on several key methods: is_allowed(request: HttpRequest, total: Decimal = None) -> bool, calculate_fee(price: Decimal) -> Decimal",
+        "The Order model uses Python-level constants (STATUS_PENDING, STATUS_PAID, etc.) as a rudimentary enum, preventing most raw literal comparisons"
+      ],
+      "issue_character": "The codebase has pervasive missing annotations on public APIs and systematic use of `dict[str, Any]` or bare `dict` for structured data, combined with Optional-but-not-annotated-as-Optional parameters using `= None` without the Optional wrapper.",
+      "score_rationale": "The score is well below mediocre (50). With 203 dict_keys findings from mechanical scan and observed patterns of `context: dict[str, Any] = None`, `user: int = None`, and nearly no return type annotations on service-layer functions, type safety is essentially absent as a discipline. The few annotated parameters in payment.py and partial annotations in services/cart.py represent isolated pockets rather than a consistent standard. This puts the codebase closer to 40 than 50 — annotations exist but are sparse and frequently incorrect (test_mode_message -> str returning None being the clearest example)."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-01",
+      "summary": "mail() and many service functions use `param: dict = None` instead of `param: dict | None = None`, lying about nullability",
+      "related_files": ["app/eventyay/base/services/mail.py"],
+      "evidence": [
+        "Line 74: `context: dict[str, Any] = None` — the type is dict but the default is None, making the true type Optional[dict[str, Any]]",
+        "Same pattern in _perform_order: `meta_info: dict = None` at line 1108"
+      ],
+      "suggestion": "Change all `param: T = None` to `param: T | None = None` (or `Optional[T] = None`) to accurately reflect the nullable contract.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_optional_annotation"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-02",
+      "summary": "BasePaymentProvider.test_mode_message annotated -> str but implementation returns None",
+      "related_files": ["app/eventyay/base/payment.py"],
+      "evidence": [
+        "Line 127: `def test_mode_message(self) -> str:` with body `return None` (line 136)"
+      ],
+      "suggestion": "Change annotation to `-> str | None` to match actual behavior.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-03",
+      "summary": "perform_checkin's given_answers typed as bare `dict`, losing parametric type information",
+      "related_files": ["app/eventyay/base/services/checkin.py"],
+      "evidence": [
+        "Line 380: `given_answers: dict` — values can be QuestionOption, list[QuestionOption], File, or str; the unparametrized dict provides no type guidance to callers"
+      ],
+      "suggestion": "Define a type alias `GivenAnswers = dict[Question, QuestionOption | list[QuestionOption] | File | str]` and use it in the signature.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-04",
+      "summary": "OrderChangeManager.add_position addon_to typed as Order but accepts OrderPosition",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Line 1710: `addon_to: Order = None` — but OrderPosition.addon_to is a FK to OrderPosition, not Order; the type annotation is factually wrong"
+      ],
+      "suggestion": "Change to `addon_to: OrderPosition | None = None` to match the actual Django FK relationship.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-05",
+      "summary": "cancel_order Celery task uses `user: int = None` without Optional annotation",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Line 2675: `user: int = None` — int cannot be None; true type is int | None"
+      ],
+      "suggestion": "Change to `user: int | None = None` throughout all service functions that accept nullable PK parameters.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-06",
+      "summary": "Order.STATUS_REFUNDED alias equals STATUS_CANCELED but is typed identically, allowing deprecated value to pass type checks",
+      "related_files": ["app/eventyay/base/models/orders.py"],
+      "evidence": [
+        "Line 161: `STATUS_REFUNDED = 'c'  # deprecated` — both STATUS_CANCELED and STATUS_REFUNDED are 'c', meaning code comparing against STATUS_REFUNDED silently compares against the same value as STATUS_CANCELED without deprecation warnings"
+      ],
+      "suggestion": "Add a DeprecationWarning property accessor for STATUS_REFUNDED or remove it entirely and grep for usages to update to STATUS_CANCELED.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-07",
+      "summary": "Missing return type annotations on all major public service functions prevents static analysis",
+      "related_files": [
+        "app/eventyay/base/services/orders.py",
+        "app/eventyay/base/services/checkin.py",
+        "app/eventyay/base/services/mail.py"
+      ],
+      "evidence": [
+        "approve_order, deny_order, mark_order_expired, _cancel_order, reactivate_order, extend_order, notify_user_changed_order, perform_checkin — none have return type annotations",
+        "This is not test code or private helpers; these are the primary public service APIs"
+      ],
+      "suggestion": "Add return type annotations starting with the highest-traffic functions: approve_order -> int, deny_order -> int, mark_order_expired -> Order, perform_checkin -> None.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "ts-08",
+      "summary": "Context dicts passed through email and order pipelines are dict[str, Any] where TypedDicts could provide structure",
+      "related_files": [
+        "app/eventyay/base/services/mail.py",
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "mail() context: dict[str, Any] — keys like 'invoice_name', 'invoice_company', 'meta_*' are predictable but untyped",
+        "203 dict_keys findings from mechanical scan confirm systemic use of untyped dict for structured data"
+      ],
+      "suggestion": "Define TypedDict classes for the common context shapes (EmailContext, OrderContext) and use them in the most-called paths. Start with get_email_context() return type.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The codebase originated from pretix which historically had minimal type annotations; eventyay inherited this pattern without establishing a new typing discipline",
+      "Django's dynamic nature (model field access, signal dispatch) makes full typing difficult, but service layer functions are straightforwardly typeable and are not"
+    ],
+    "likely_symptoms": ["ts-01", "ts-07"],
+    "possible_false_positives": []
+  }
+}

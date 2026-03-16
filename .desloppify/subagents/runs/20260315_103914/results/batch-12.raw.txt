@@ -1,0 +1,116 @@
+{
+  "batch": "incomplete_migration",
+  "batch_index": 12,
+  "assessments": {"incomplete_migration": 45.0},
+  "dimension_notes": {
+    "incomplete_migration": {
+      "evidence": [
+        "app/eventyay/api/versions.py: LEGACY constant is still a SUPPORTED_VERSION; DEPRECATED_VERSIONS list contains LEGACY; comment '# TODO: track use of legacy versions, send/show warning (once) to user' — legacy API coexists with current v1 with no removal timeline",
+        "app/eventyay/api/pagination.py: PageNumberPagination has explicit comment 'TODO remove implementation details once the legacy API is getting removed' — compatibility shim for limit/offset still active alongside page-number pagination",
+        "app/eventyay/api/views/submission.py lines 32-43: dual import of LegacySubmission* serializers and current SubmissionSerializer; both used in the same view set; old-and-new API coexistence is explicit",
+        "app/eventyay/api/views/submission.py line 44: 'from eventyay.api.versions import LEGACY' used to branch behavior inside viewset actions",
+        "app/eventyay/api/serializers/legacy.py: entire legacy serializer file exists (LegacySubmissionSerializer, LegacySubmissionOrgaSerializer, LegacySubmissionReviewerSerializer) — no callers outside the single submission view, no stated removal target",
+        "app/eventyay/base/models/submission.py lines 1081-1108: SubmissionFavouriteDeprecated model still exists in production models, with its own serializer — a deprecated DB table with no evident removal plan",
+        "app/eventyay/orga/permissions.py: 'rules.add_perm(\"base.change_settings\", ...)' with comment '# Legacy for plugins. TODO remove after v2025.1.0' — version 2025.1.0 is past (today is 2026-03-15) and the permission shim is still present",
+        "app/eventyay/base/plugins.py line 18-28: PluginType enum marked 'THIS IS DEPRECATED, DO NOT USE ANY MORE' but still present and could still be imported by external plugins",
+        "app/eventyay/control/logdisplay.py line 321: backward-compatibility mapping from pretix.* and pretalx.* action types to eventyay.* — shim required because old log entries exist in DB, but no timeline for removal",
+        "app/eventyay/base/services/cancelevent.py lines 209,217: new eventyay code emits log actions with 'pretix.event.canceled' and 'pretix.event.product.changed' — actively generating data using the old namespace",
+        "app/eventyay/base/plugins.py line 113: 'PRETIX_IGNORE_CONFLICTS' env var checked in new PluginConfig — legacy env var name still active in new code path"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "incomplete_migration": {
+      "strengths": [
+        "The legacy API is explicitly versioned and isolated behind a LEGACY constant, not silently present",
+        "The compatibility shim in pagination.py is commented with a TODO pointing to removal condition",
+        "logdisplay.py backward-compatibility mapping is documented as serving historic DB entries, not new code"
+      ],
+      "issue_character": "The migration from pretix/pretalx namespaces to eventyay is structurally incomplete: deprecated symbols are still called by active production code paths, a past-due permission alias remains, and the legacy API coexists without a removal deadline.",
+      "score_rationale": "Multiple distinct incomplete migrations are present simultaneously: the LEGACY API version is still supported with no removal target, SubmissionFavouriteDeprecated exists as an active production model past its useful life, new code actively logs events under the pretix.* namespace, and a 'remove after v2025.1.0' shim survived well past that version. The breadth of simultaneous stale coexistences across API versioning, model layer, log namespacing, and permission registration drives the score well below the midpoint."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-01",
+      "summary": "orga/permissions.py legacy permission shim survived past its v2025.1.0 removal deadline",
+      "related_files": ["app/eventyay/orga/permissions.py"],
+      "evidence": [
+        "'# Legacy for plugins. TODO remove after v2025.1.0' — today is 2026-03-15, the deadline is at least a year past",
+        "rules.add_perm('base.change_settings', can_change_event_settings) is the entire file body — if external plugins no longer use this permission string, the entire file can be deleted"
+      ],
+      "suggestion": "Audit whether any plugin in INSTALLED_APPS or in the plugin registry checks 'base.change_settings'; if none do, delete orga/permissions.py. If some still do, set a new concrete deadline and create a tracking issue.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-02",
+      "summary": "cancelevent.py active production code logs events under pretix.* namespace instead of eventyay.*",
+      "related_files": ["app/eventyay/base/services/cancelevent.py"],
+      "evidence": [
+        "Line 209: event.log_action('pretix.event.canceled', user=user)",
+        "Line 217: i.log_action('pretix.event.product.changed', ...) — these generate new log rows under the old namespace, compounding the compatibility burden in logdisplay.py"
+      ],
+      "suggestion": "Replace 'pretix.event.canceled' with 'eventyay.event.canceled' and 'pretix.event.product.changed' with 'eventyay.event.product.changed'. Add the old strings to logdisplay.py's backward-compat mapping only for historic DB rows, not for newly emitted events.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-03",
+      "summary": "SubmissionFavouriteDeprecated is an active production model with no removal plan",
+      "related_files": ["app/eventyay/base/models/submission.py", "app/eventyay/api/views/submission.py"],
+      "evidence": [
+        "app/eventyay/base/models/submission.py line 1081: class SubmissionFavouriteDeprecated(models.Model) — the word 'Deprecated' in the class name signals intended removal",
+        "app/eventyay/api/views/submission.py line 63: imported and used in the view, so the deprecated model is still on the active call path"
+      ],
+      "suggestion": "Check whether any non-deprecated code path relies on SubmissionFavouriteDeprecated data. If a replacement favourite mechanism exists, migrate existing rows, write a squashed migration to drop the table, and remove the class and its serializer.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-04",
+      "summary": "LEGACY API version is still fully supported with no documented removal timeline",
+      "related_files": ["app/eventyay/api/versions.py", "app/eventyay/api/pagination.py", "app/eventyay/api/serializers/legacy.py"],
+      "evidence": [
+        "versions.py: LEGACY in DEPRECATED_VERSIONS but also in SUPPORTED_VERSIONS — still served",
+        "pagination.py: LimitOffsetPagination shim with 'TODO remove once legacy API is getting removed' but no issue or date",
+        "api/serializers/legacy.py: entire file of legacy serializers, >100 LOC, with no removal annotation"
+      ],
+      "suggestion": "Set a concrete end-of-life date for the LEGACY version (e.g., one release cycle from now). Add an HTTP deprecation header to all LEGACY responses. Create a tracking issue with migration guide for any consumers. Remove the shim in pagination.py and serializers/legacy.py once no active callers remain.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-05",
+      "summary": "PluginType deprecated enum still present and could be imported by external plugins",
+      "related_files": ["app/eventyay/base/plugins.py"],
+      "evidence": [
+        "Lines 18-28: 'THIS IS DEPRECATED, DO NOT USE ANY MORE. This is only not removed yet as external plugins might have references to this enum.' — indefinite retention rationale with no plan"
+      ],
+      "suggestion": "Survey installed and published plugins for PluginType references. Issue a deprecation warning on first import using warnings.warn. Set a removal version and document it in the changelog.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Platform merger (pretix + pretalx + venueless → eventyay) is ongoing without a migration completion board tracking each deprecated symbol to a removal commit",
+      "Version removal criteria for the LEGACY API are undefined, so the shim persists indefinitely"
+    ],
+    "likely_symptoms": ["IM-01", "IM-02", "IM-03"],
+    "possible_false_positives": ["logdisplay.py backward-compat mapping — this is genuinely required for historic DB rows and is not a migration failure"]
+  }
+}

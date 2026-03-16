@@ -1,0 +1,137 @@
+{
+  "batch": "contract_coherence",
+  "batch_index": 16,
+  "assessments": {"contract_coherence": 64.0},
+  "dimension_notes": {
+    "contract_coherence": {
+      "evidence": [
+        "OrderDetailMixin.order property in presale/views/order.py lines 100-114: the else-else branch always returns None, making the timing-attack comment misleading — both branches of the else return None, so the comparison is a dead no-op while the docblock suggests protective work is occurring",
+        "BasePaymentProvider.test_mode_message annotated as -> str but returns None (line 136 of payment.py): annotated return type lies about the None path",
+        "BasePaymentProvider.execute_payment declared -> str | None in docstring it says 'returns URL or None' but default implementation returns None with no documentation that None means 'stay on current page'",
+        "perform_checkin in base/services/checkin.py has no return type annotation and silently returns None (no return statement) when nonce matches an existing checkin (line 473), while callers in checkin API treat the function as void — the silent return is undocumented",
+        "approve_order in services/orders.py returns order.pk (int) but the function docstring says 'Mark this order as approved' with no mention of return value; deny_order does the same, making callers unaware there is a meaningful return value",
+        "mark_order_refunded (line 252) accepts auth as a general parameter but internally does isinstance checks to derive api_token and device — these dual-role parameters break the stated contract that you pass an auth object",
+        "get_logic_environment inner function build_time has no return statement for else paths — if t is not 'custom', 'date_from', 'date_to', or 'date_admission' it implicitly returns None, violating the expected datetime contract",
+        "OrderChangeManager.commit() has no declared return type but its callers chain off side effects; the function at line 2416 silently returns None in the early exit case (empty operations), which is coherent but undocumented",
+        "CompatibleCountryField.to_representation in api/serializers/order.py: returns str(instance.country) if truthy, or instance.country_old if attribute exists, otherwise returns None implicitly — declared as returning nothing but actually returns str | str | None"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "contract_coherence": {
+      "strengths": [
+        "Core service functions like _cancel_order, extend_order, and reactivate_order raise OrderError consistently rather than silently returning None on failure paths",
+        "BasePaymentProvider base class uses NotImplementedError on abstract methods (verbose_name, identifier, checkout_confirm_render, payment_is_valid_session) rather than placeholder returns, clearly signaling unimplemented contracts",
+        "CheckInError and RequiredQuestionsError carry structured .msg and .code attributes matching documented usage in callers",
+        "OrderChangeManager uses a commit pattern that enforces single-use via _committed flag, matching its stated transactional contract",
+        "The _invalidate_positions helper has a clear docstring explaining the different behavior modes for mark_canceled"
+      ],
+      "issue_character": "Return type annotation lies and silent None returns on documented getter/mutation paths are the dominant pattern, concentrated in service functions and payment provider base class methods.",
+      "score_rationale": "The codebase is in the mediocre-to-adequate range (50-70). Core order and payment flows raise exceptions rather than silently failing, which is positive. However, multiple public API methods have annotation lies (test_mode_message returning None when annotated -> str), dead code masquerading as timing-attack protection, and silent None returns from functions callers expect to throw. The density of minor contract violations across service and serializer layers prevents a score above 65."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "contract_coherence",
+      "identifier": "cc-01",
+      "summary": "OrderDetailMixin.order property has dead else-else branch that both return None, making timing-attack comment misleading",
+      "related_files": ["app/eventyay/presale/views/order.py"],
+      "evidence": [
+        "Lines 110-114: `if 'abcdefghijklmnopq'.lower() == self.kwargs['secret'].lower(): return None else: return None` — both branches of the timing-protection else block return None unconditionally; the comparison is never acted upon"
+      ],
+      "suggestion": "Collapse to a single `return None` after the comparison that does the constant-time check, or actually use the comparison result. If timing protection is desired, a single `hmac.compare_digest` call followed by `return None` is clearer.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "cc-02",
+      "summary": "BasePaymentProvider.test_mode_message annotated -> str but returns None by default",
+      "related_files": ["app/eventyay/base/payment.py"],
+      "evidence": [
+        "Line 127: `def test_mode_message(self) -> str:` with body `return None` at line 136; callers calling str() on this will produce 'None' silently"
+      ],
+      "suggestion": "Change annotation to `-> str | None` to match actual return contract, and update callers to guard against None before rendering.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "cc-03",
+      "summary": "perform_checkin silently returns None (no-op) when nonce matches, but is documented only as raising CheckInError on failure",
+      "related_files": ["app/eventyay/base/services/checkin.py"],
+      "evidence": [
+        "Lines 469-473: `if nonce and (...): return` — this silent return indicates a duplicate/idempotent checkin was accepted, but the docstring only documents raising CheckInError, not this success-with-no-object path"
+      ],
+      "suggestion": "Document the nonce-deduplicated return path in the docstring, or return a sentinel/Checkin object to distinguish 'newly created' from 'already exists'.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "cc-04",
+      "summary": "approve_order and deny_order return order.pk without declaring or documenting this return value",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Line 360: `return order.pk` in approve_order; line 404: `return order.pk` in deny_order — neither function signature nor docstring mentions a return value; some callers in the API layer ignore the return value entirely"
+      ],
+      "suggestion": "Add return type annotation `-> int` and document that the return value is the order's PK, or change to return None if the value is not used.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "cc-05",
+      "summary": "build_time inner function in get_logic_environment has implicit None return for unhandled time types",
+      "related_files": ["app/eventyay/base/services/checkin.py"],
+      "evidence": [
+        "Lines 53-61: build_time handles 'custom', 'date_from', 'date_to', 'date_admission' but has no else branch — unknown types silently return None and then fail downstream when used as a datetime"
+      ],
+      "suggestion": "Add `else: raise ValueError(f'Unknown time type {t}')` matching the SQL equivalent in operation_to_expression which already raises ValueError.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "cc-06",
+      "summary": "mark_order_refunded accepts auth parameter but performs isinstance dispatch to derive api_token/device, hiding dual-role param contract",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Lines 252-263: `mark_order_refunded(order, user=None, auth=None, api_token=None)` then immediately does `oautha = auth.pk if isinstance(auth, OAuthApplication) else None` etc. — the function accepts api_token as its own arg AND pulls it from auth, creating ambiguity"
+      ],
+      "suggestion": "Remove the inline isinstance dispatch and accept either a typed auth union or document explicitly which parameter takes precedence when both are provided.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "cc-07",
+      "summary": "CompatibleCountryField.to_representation returns str | str | None implicitly without annotation",
+      "related_files": ["app/eventyay/api/serializers/order.py"],
+      "evidence": [
+        "Lines 65-69: returns str(instance.country) or instance.country_old or implicitly None if neither branch is taken — no return type annotation, third path is invisible to callers"
+      ],
+      "suggestion": "Add `-> str | None` annotation and make all return paths explicit with a final `return None`.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Incomplete migration from older pretix codebase where type annotations were rare; new code adds annotations inconsistently",
+      "Base class abstract methods pattern uses NotImplementedError correctly but concrete default implementations often return None while annotated as concrete types"
+    ],
+    "likely_symptoms": ["cc-01", "cc-05"],
+    "possible_false_positives": []
+  }
+}

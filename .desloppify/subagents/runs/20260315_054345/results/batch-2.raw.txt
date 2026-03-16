@@ -1,0 +1,109 @@
+{
+  "batch": "high_level_elegance",
+  "batch_index": 2,
+  "assessments": {
+    "high_level_elegance": 52.0
+  },
+  "dimension_notes": {
+    "high_level_elegance": {
+      "evidence": [
+        "app/eventyay/base/ contains 60+ model files, multiple service sub-packages, forms, views, exporters, signals — this single package owns the entire domain model, making it a monolithic hub rather than a decomposed subsystem",
+        "Two duplicate logging mixins coexist: LoggingMixin in base/models/base.py and LogMixin in base/models/mixins.py — both implement log_action() with nearly identical logic; this blurs which is canonical",
+        "base/admin.py imports from eventyay.api.models (OAuthApplication, OAuthAccessToken, etc.) at line 14, meaning the admin entry point for base models knows about the api layer",
+        "The eventyay/base/__init__.py is empty and eventyay/base/services/__init__.py is empty — no documented public API contract for either package",
+        "app/eventyay/common/ and app/eventyay/base/ overlap in role: common/ has forms, views, templatetags, text utilities, signals, middleware, image processing — all things that base/ also has or could have",
+        "app/eventyay/eventyay_common/ is a third common-utilities package alongside common/ and base/, further fragmenting shared infrastructure with no documented boundary between them",
+        "base/models/__init__.py re-exports PretalxModel (a name referencing the upstream fork pretalx) alongside Eventyay-specific models — the public model API carries namespace leakage from a different product",
+        "app/eventyay/core/ exists as yet another top-level package alongside base/, common/, and eventyay_common/, holding permissions, management commands, and utils — its role is indistinct from base/",
+        "base/services/announcement.py is a clean, minimal service layer example: thin async wrappers over model operations, no upward imports",
+        "base/services/auth.py is similarly clean: a single periodic-task receiver with clear scope"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "high_level_elegance": {
+      "strengths": [
+        "base/services/announcement.py demonstrates a clean service-layer pattern: async wrappers over model operations with no cross-layer imports",
+        "The signal infrastructure (base/signals.py) is well-decomposed: EventPluginSignal, GlobalSignal, DeprecatedSignal are coherent roles with documented contracts",
+        "base/apps.py provides a clean Django AppConfig entry point for the base package"
+      ],
+      "issue_character": "The codebase has three competing 'common infrastructure' packages (base/, common/, eventyay_common/, core/) with overlapping roles and no documented boundaries, and a monolithic base/models/ hub that owns all domain models regardless of domain area.",
+      "score_rationale": "This codebase scores below the 70 (adequate) anchor. The decomposition is historical rather than domain-aligned: a new engineer cannot explain why base/ vs common/ vs eventyay_common/ vs core/ exist as separate packages, because their boundaries are not coherent. The dual LoggingMixin/LogMixin pattern is a concrete evidence of ownership confusion within a single package. The base package has become so large that it violates the 'small public surface' property — its __init__.py re-exports 100+ symbols. The codebase does better than mediocre (50) because there are clean sub-patterns (services/announcement.py, signals.py), but the top-level decomposition is inadequate."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle_dual_logging_mixin",
+      "summary": "Two near-identical logging mixins coexist with no documented distinction: LoggingMixin (base/models/base.py) and LogMixin (base/models/mixins.py)",
+      "related_files": [
+        "app/eventyay/base/models/base.py",
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "base/models/base.py: LoggingMixin defines log_action() and is mixed into LoggedModel",
+        "base/models/mixins.py: LogMixin also defines log_action() with additional log_prefix/log_parent fields, mixed into PretalxModel",
+        "Both are re-exported from base/models/__init__.py, giving consumers no guidance on which to use",
+        "Both perform nearly identical deferred imports from eventyay.api.models inside log_action()"
+      ],
+      "suggestion": "Consolidate into a single logging mixin. Decide whether log_prefix/log_parent (LogMixin) should be part of the canonical base or an extension, and document that choice. Remove the duplicate.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle_three_common_packages",
+      "summary": "Three packages (common/, eventyay_common/, core/) serve overlapping infrastructure roles alongside base/, creating undefined ownership for shared utilities",
+      "related_files": [
+        "app/eventyay/common/",
+        "app/eventyay/eventyay_common/",
+        "app/eventyay/core/",
+        "app/eventyay/base/"
+      ],
+      "evidence": [
+        "common/ contains: forms, views, middleware, templatetags, text, signals, image utilities",
+        "eventyay_common/ contains: forms, views (account, event, organizer, auth, team), templatetags, tasks, migrations",
+        "core/ contains: permissions, utils/json, management commands",
+        "base/ contains: forms, views, services, models, templatetags, signals",
+        "A new engineer cannot predict whether a shared utility belongs in base/, common/, eventyay_common/, or core/"
+      ],
+      "suggestion": "Define and document boundaries: one 'common' package for cross-cutting utilities with no domain knowledge, one 'base' package for domain models and services. Merge eventyay_common/ into the appropriate package and eliminate core/ or document its distinct role.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle_pretalxmodel_name_namespace_leak",
+      "summary": "PretalxModel is a publicly exported base model name derived from the upstream fork's brand (pretalx), creating namespace confusion in the eventyay product",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/__init__.py"
+      ],
+      "evidence": [
+        "base/models/mixins.py defines class PretalxModel as the primary base model for all eventyay domain models",
+        "base/models/__init__.py exports PretalxModel in __all__",
+        "Any developer reading model class hierarchies will see PretalxModel as a base — a name from a different product"
+      ],
+      "suggestion": "Rename PretalxModel to EventyayModel (or BaseModel) and perform a codebase-wide rename. This is a naming ownership issue that affects every model in the system.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The codebase is a merger of pretix (ticketing) and pretalx (conference management) with added eventyay-specific features; the top-level package structure was not redesigned after the merge, leaving three 'common' packages and inherited naming from both upstream projects",
+      "base/ accumulated all domain models because it was the pretix base package; pretalx domain models were added alongside rather than integrated into a coherent structure"
+    ],
+    "likely_symptoms": [
+      "hle_dual_logging_mixin — symptom of ownership ambiguity between the two merged codebases",
+      "hle_pretalxmodel_name_namespace_leak — symptom of the merge not doing a rename pass"
+    ],
+    "possible_false_positives": []
+  }
+}

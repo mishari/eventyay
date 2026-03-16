@@ -1,0 +1,129 @@
+{
+  "batch": "mid_level_elegance",
+  "batch_index": 9,
+  "assessments": {
+    "mid_level_elegance": 58.0
+  },
+  "dimension_notes": {
+    "mid_level_elegance": {
+      "evidence": [
+        "app/eventyay/base/services/announcement.py: async service functions return serialize_public() dicts directly — the translation from model to dict happens inside the service, which is appropriate single-location boundary translation.",
+        "app/eventyay/base/models/access_code.py: send_invite() performs a lazy import of QueuedMail inside the method to avoid circular imports — this is a seam smell indicating the model has outgrown its package boundary.",
+        "app/eventyay/base/payment.py imports from eventyay.presale.views (get_cart, get_cart_total, cart_session, get_or_create_cart_id) — a base-layer module depending on a view-layer module is an inverted boundary that forces view logic into base package tests.",
+        "app/eventyay/base/services/cart.py imports from eventyay.base.services.checkin._save_answers — private symbol crossing service boundary without a clean contract.",
+        "app/eventyay/presale/utils.py: _event_view wrapper and _detect_event integrate middleware (LocaleMiddleware(NotImplementedError)) with domain routing — LocaleMiddleware is instantiated with a NotImplementedError as its get_response argument (a sentinel hack rather than clean composition).",
+        "app/eventyay/base/services/orders.py imports from 20+ modules including models, services, signals, and API models (OAuthApplication) — a hub service with wide import fan-in.",
+        "app/eventyay/base/models/event.py imports from eventyay.talk_rules.event (can_change_event_settings, etc.) and eventyay.eventyay_common.video.permissions — model layer importing from business-rule and video-permission layers.",
+        "app/eventyay/control/views/orders.py imports vat_moss.id, a VAT computation library, directly in the view layer — VAT logic belongs in the service layer for testability.",
+        "app/eventyay/base/models/__init__.py re-exports 100+ symbols, making the model boundary extremely wide and all callers tightly coupled to its completeness.",
+        "app/eventyay/base/services/checkin.py: get_logic_environment() returns a Logic object populated locally — clean explicit output from the function with no hidden state.",
+        "app/eventyay/common/views/cache.py: conditional_cache_page delegates cleanly to etag_cache_page — good composition without back-and-forth.",
+        "app/eventyay/orga/views/review.py: ReviewDashboard inherits from both EventPermissionRequired and BaseSubmissionList, composing permission and query logic cleanly."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "mid_level_elegance": {
+      "strengths": [
+        "Announcement service translates to dict at the boundary (serialize_public) in a single, obvious place.",
+        "get_logic_environment() returns an explicit Logic object — no hidden state mutation across the service boundary.",
+        "conditional_cache_page -> etag_cache_page is a clean one-direction delegation with explicit parameters.",
+        "EventPermissionRequiredMixin and EventPermissionMiddleware both centralize auth enforcement at the boundary rather than scattering it in handlers.",
+        "BaseSubmissionList / ReviewDashboard mixin composition is coherent — each mixin owns a distinct concern."
+      ],
+      "issue_character": "The dominant pattern is layer boundary violations: base.payment importing presale.views, event model importing business-rule and video permission layers, and a 20+ import hub in services/orders.py that makes the service layer's seam unclear.",
+      "score_rationale": "The codebase shows genuine effort at service-layer decomposition (announcement, checkin, cart, orders as separate services), but the boundary integrity is repeatedly violated by upward imports (base -> presale, model -> business-rule layer) and a lazy-import hack in access_code.py that signals an unresolved circular dependency. The services/orders.py import fan-in (20+ modules including API models) creates a hub that makes the service-layer seam difficult to test or extend. These are mid-level seam problems — not naming or internal implementation issues — and they affect a significant fraction of core paths, warranting a score in the upper-50s."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "base_payment_presale_dep",
+      "summary": "base/payment.py imports view-layer symbols from presale.views, inverting the layer boundary",
+      "related_files": [
+        "app/eventyay/base/payment.py",
+        "app/eventyay/presale/views/__init__.py",
+        "app/eventyay/presale/views/cart.py"
+      ],
+      "evidence": [
+        "from eventyay.presale.views import get_cart, get_cart_total",
+        "from eventyay.presale.views.cart import cart_session, get_or_create_cart_id"
+      ],
+      "suggestion": "Move get_cart, get_cart_total, cart_session, get_or_create_cart_id to eventyay.base.services.cart so both base.payment and presale.views can import from the service layer without crossing the boundary.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "event_model_business_rule_import",
+      "summary": "base/models/event.py imports from talk_rules.event and eventyay_common.video.permissions, pulling business rules into the model layer",
+      "related_files": [
+        "app/eventyay/base/models/event.py"
+      ],
+      "evidence": [
+        "from eventyay.talk_rules.event import (can_change_event_settings, can_create_events, has_any_permission, is_event_visible,)",
+        "from eventyay.eventyay_common.video.permissions import VIDEO_PERMISSION_BY_FIELD, VIDEO_TRAIT_ROLE_MAP"
+      ],
+      "suggestion": "Invert the dependency: have talk_rules and video.permissions reference the model through explicit model imports, not the reverse. Use rules model permissions (rules_permissions on Meta) that reference callables from the model file itself, or move permission callables into the model module.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "access_code_lazy_import",
+      "summary": "SubmitterAccessCode.send_invite() uses lazy import of QueuedMail to avoid circular dependency — signals unresolved boundary",
+      "related_files": ["app/eventyay/base/models/access_code.py"],
+      "evidence": [
+        "def send_invite(self, to, subject, text): from eventyay.base.models import QueuedMail"
+      ],
+      "suggestion": "Extract send_invite into an access_code service module that imports both SubmitterAccessCode and QueuedMail at module level, removing the circular dependency by placing the orchestration outside the model.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "locale_middleware_sentinel",
+      "summary": "LocaleMiddleware instantiated with NotImplementedError as get_response sentinel in _detect_event",
+      "related_files": ["app/eventyay/presale/utils.py"],
+      "evidence": [
+        "LocaleMiddleware(NotImplementedError).process_request(request)  — passing an exception class as the get_response argument"
+      ],
+      "suggestion": "Either extract locale processing into a standalone function (avoid middleware instantiation entirely) or use a no-op lambda as the get_response argument to be explicit about the intent.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "orders_service_hub",
+      "summary": "base/services/orders.py imports from 20+ modules including OAuthApplication — excessive fan-in blurs service seam",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Imports include: base.models (12 models), base.models.event, base.models.orders, base.models.organizer, base.models.product, base.models.tax, base.payment, base.services (invoices, locking, mail, pricing, quotas, tasks, tickets), base.signals, api.models.OAuthApplication"
+      ],
+      "suggestion": "Split the orders service into focused sub-services: order_creation.py, order_cancellation.py, order_payment.py. The OAuthApplication import specifically suggests API concerns leaking into the core service — move that logic to the API layer.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Merger of pretix (ticketing) and pretalx (talk management) codebases brought two independently designed layer models that were not fully reconciled at the boundary level",
+      "The base model layer accumulated business rules incrementally rather than keeping rules in a dedicated layer"
+    ],
+    "likely_symptoms": [
+      "access_code_lazy_import — symptom of circular dependency from cross-layer coupling",
+      "locale_middleware_sentinel — symptom of middleware being co-opted for non-middleware use"
+    ],
+    "possible_false_positives": [
+      "base/models/__init__.py wide re-export — intentional package facade for stable import paths, justified but creates a wide surface"
+    ]
+  }
+}

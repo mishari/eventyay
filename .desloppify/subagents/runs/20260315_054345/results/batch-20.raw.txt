@@ -1,0 +1,151 @@
+{
+  "batch": "api_surface_coherence",
+  "batch_index": 20,
+  "assessments": {"api_surface_coherence": 55.0},
+  "dimension_notes": {
+    "api_surface_coherence": {
+      "evidence": [
+        "Service layer functions have inconsistent parameter ordering: approve_order(order, user=None, send_mail=True, auth=None, force=False) vs deny_order(order, comment='', user=None, send_mail=True, auth=None) vs reactivate_order(order: Order, force: bool = False, user: User = None, auth=None) — similar functions with different parameter positioning and naming (user before or after send_mail, force before or after user)",
+        "cancel_order task (line 2672) uses positional int PK for order and user, while reactivate_order and extend_order accept model instances directly — inconsistent: some functions accept Order objects, others accept int PKs",
+        "_cancel_order positional signature: (order, user, send_mail, api_token, device, oauth_application, cancellation_fee, keep_fees, cancel_invoice) — 9 parameters with mixed auth-related parameters (api_token, device, oauth_application) that could be a single auth object; the outer cancel_order task calls it with keyword args but is itself called by mark_order_refunded positionally",
+        "mark_order_refunded (line 252) does not accept send_mail parameter but _cancel_order does (called with send_mail=False hardcoded) — the public API surface for cancellation is split across multiple wrappers with different parameter sets",
+        "change_payment_provider (line 2707) requires the caller to be inside an atomic transaction and raises plain Exception if not — no documented error contract in signature or docstring, no specific exception type",
+        "BasePaymentProvider methods checkout_prepare returns Union[bool, str] while payment_is_valid_session returns bool — same checkout flow methods return incompatible types requiring isinstance checks by callers",
+        "BaseExporter.render() declared to return Tuple[str, str, bytes] but docstring says 'you can return None instead' when output_file is provided — overloaded interface that returns different types based on hidden argument presence",
+        "API viewsets (OrderViewSet, CheckinListViewSet) inherit from DRF viewsets and follow consistent REST patterns — this part of the surface is coherent",
+        "LogMixin.log_action has 9 parameters: (action, data=None, user=None, api_token=None, auth=None, person=None, orga=False, content_object=None, save=True) — both api_token and auth can represent authentication context, creating ambiguity at call sites",
+        "perform_checkin signature has 10 parameters including both user and auth, nonce and datetime and questions_supported — exceeds the >5 parameter threshold and conflates authentication context (user, auth) with control flags (force, ignore_unpaid, questions_supported, canceled_supported)"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "api_surface_coherence": {
+      "strengths": [
+        "REST API viewsets (OrderViewSet, CheckinListViewSet, OrganizerViewSet) follow consistent DRF patterns with coherent CRUD surface",
+        "BasePaymentProvider provides a documented extension API with consistent naming (checkout_prepare, execute_payment, payment_form_render) that plugin authors can follow",
+        "OrderChangeManager builder pattern exposes a coherent API: change_product(), change_price(), change_seat(), cancel(), add_position() all follow the same no-return mutation pattern before commit()"
+      ],
+      "issue_character": "Parameter ordering inconsistency across functionally similar service functions (approve/deny/reactivate/cancel order) and overloaded auth parameters (user + auth + api_token + device appearing simultaneously) are the dominant coherence failures.",
+      "score_rationale": "The score is below mediocre (55). The REST API surface (DRF viewsets) is coherent and follows standard patterns. The service layer however has significant inconsistency: similar order lifecycle functions have different parameter orderings, some accept model instances and others accept PKs, and auth context is split across user/auth/api_token/device parameters without a unifying auth object. This creates a developer burden when writing callers and contributes to bugs like the mark_order_refunded api_token derivation issue. The score of 55 reflects that the HTTP-facing API is adequate but the internal service API has systemic coherence problems."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "asc-01",
+      "summary": "approve_order, deny_order, and reactivate_order have different parameter orderings for user and auth",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "approve_order: (order, user=None, send_mail=True, auth=None, force=False)",
+        "deny_order: (order, comment='', user=None, send_mail=True, auth=None)",
+        "reactivate_order: (order: Order, force: bool = False, user: User = None, auth=None)",
+        "Callers must know which parameter position user and auth occupy per function"
+      ],
+      "suggestion": "Standardize to a consistent signature pattern across all order lifecycle functions, e.g. (order, *, user=None, auth=None, send_mail=True, force=False) using keyword-only arguments.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "api_parameter_inconsistency"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "asc-02",
+      "summary": "cancel_order task accepts int PKs for order and user while related functions accept model instances",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "cancel_order task line 2673: `order: int` and `user: int = None`",
+        "reactivate_order line 157: `order: Order`",
+        "approve_order line 290: `order` is used as a model instance (order.require_approval etc.)",
+        "Mixed PK vs instance convention across the same module"
+      ],
+      "suggestion": "Choose one convention: either all public service functions accept model instances (and the Celery task wrapper does the PK->instance lookup internally), or document explicitly which functions accept PKs vs instances.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "asc-03",
+      "summary": "perform_checkin has 10 parameters including duplicate auth context (user + auth) and multiple boolean flags",
+      "related_files": ["app/eventyay/base/services/checkin.py"],
+      "evidence": [
+        "Signature: perform_checkin(op, clist, given_answers, force=False, ignore_unpaid=False, nonce=None, datetime=None, questions_supported=True, user=None, auth=None, canceled_supported=False, type=Checkin.TYPE_ENTRY) — 12 parameters total",
+        "user and auth both represent authentication context; callers pass one or the other",
+        "force, ignore_unpaid, questions_supported, canceled_supported are four independent boolean control flags"
+      ],
+      "suggestion": "Introduce a CheckinOptions dataclass grouping the boolean flags, and unify auth context. Reduce signature to: perform_checkin(op, clist, given_answers, *, options: CheckinOptions = None, auth=None, nonce=None, datetime=None).",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "asc-04",
+      "summary": "change_payment_provider raises bare Exception for wrong transaction context with no documented error contract",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Line 2715: `if not get_connection().in_atomic_block: raise Exception('change_payment_provider should only be called in atomic transaction!')`",
+        "Plain Exception is uncatchable without catching all exceptions; no custom exception type, no annotation indicating this pre-condition"
+      ],
+      "suggestion": "Define a specific exception (e.g., `class NotInAtomicBlock(RuntimeError): pass`) and raise it, or annotate the function with a precondition decorator. Document the atomicity requirement in the docstring.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "asc-05",
+      "summary": "BaseExporter.render() documented to return None when output_file is provided, but annotated -> Tuple[str, str, bytes]",
+      "related_files": ["app/eventyay/base/exporter.py"],
+      "evidence": [
+        "Line 94: `def render(self, form_data: dict) -> Tuple[str, str, bytes]:`",
+        "Docstring says 'you can return None instead of the file content' when output_file is passed — overloaded behavior not visible from the annotation"
+      ],
+      "suggestion": "Change signature to `-> Tuple[str, str, bytes] | None` and update the parameter to include `output_file` so the optional return is visible to callers.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "asc-06",
+      "summary": "LogMixin.log_action has both api_token and auth parameters creating ambiguous auth context",
+      "related_files": ["app/eventyay/base/models/mixins.py"],
+      "evidence": [
+        "log_action signature: (action, data=None, user=None, api_token=None, auth=None, person=None, orga=False, content_object=None, save=True)",
+        "Both api_token and auth can represent TeamAPIToken; callers in services/orders.py use auth=, callers in other places use api_token= — no clear documentation on which takes precedence"
+      ],
+      "suggestion": "Deprecate the api_token parameter and route all auth through the auth parameter, using isinstance dispatch internally as already done in log_action body.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "asc-07",
+      "summary": "_cancel_order has 9 positional parameters while all callers use different keyword subsets, creating call-site fragility",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "_cancel_order(order, user, send_mail, api_token, device, oauth_application, cancellation_fee, keep_fees, cancel_invoice) — positional",
+        "mark_order_refunded calls _cancel_order with positional args at line 256",
+        "cancel_order task calls with keyword args at line 2688",
+        "Mixed calling conventions for the same internal function"
+      ],
+      "suggestion": "Make all parameters after `order` keyword-only using `*` in the signature to prevent future positional call-site errors.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The service layer was developed incrementally over many features, with each addition adding auth parameters without a unifying auth object pattern",
+      "Celery task wrappers that serialize arguments as primitives (int PKs) create a seam between task-safe interfaces and ORM-using internal functions that was never abstracted away"
+    ],
+    "likely_symptoms": ["asc-01", "asc-02"],
+    "possible_false_positives": []
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "batch": "api_surface_coherence",
+  "batch_index": 20,
+  "assessments": {
+    "api_surface_coherence": 55.0
+  },
+  "dimension_notes": {
+    "api_surface_coherence": {
+      "evidence": [
+        "REST API viewsets (OrderViewSet, CheckinListViewSet, SpeakerViewSet, WebHookViewSet, OrganizerViewSet) follow a consistent DRF ModelViewSet pattern with uniform permission and queryset patterns",
+        "SpeakerViewSet uses PretalxViewSetMixin which handles versioned serializers, while OrderViewSet does not — inconsistent API versioning approach between modules",
+        "WebHookViewSet.perform_update() returns inst (line 39) while DRF's standard perform_update() returns None — inconsistent return contract within the API layer",
+        "BasePaymentProvider public API has 20+ hook methods, all synchronous, which is consistent but creates a very large interface surface",
+        "perform_checkin has 10 parameters (op, clist, given_answers, force, ignore_unpaid, nonce, datetime, questions_supported, user, auth, canceled_supported, type) — 12 total including self-equivalent — exceeds the 5-parameter guideline for public APIs",
+        "mail() function has 17 parameters — far exceeds the 5-parameter API boundary guideline; the function does too many things (compose, filter, attach tickets, attach ical, attach cached files, attach invoices, sync/async mode)",
+        "_create_order has 9 parameters with similar overloading concerns",
+        "Mixed sync/async: base/services/user.py get_blocked_users is async (decorated @database_sync_to_async) while set_user_banned, delete_user, block_user are also async — but they are called alongside synchronous order service functions without clear boundary documentation",
+        "The stable API (api/views/order.py OrderViewSet) and talk API (api/views/speaker.py SpeakerViewSet) use different base mixin patterns (pure DRF vs PretalxViewSetMixin), creating two divergent API surface styles in the same codebase",
+        "Error contracts: API viewsets raise DRF exceptions (PermissionDenied, NotFound, ValidationError) consistently; service layer raises OrderError, CartError, CheckInError — the boundary translation is done in views but not documented"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A — score below 85"
+    }
+  },
+  "dimension_judgment": {
+    "api_surface_coherence": {
+      "strengths": [
+        "REST API viewsets consistently use DRF conventions (ModelViewSet, permission attributes, serializer_class)",
+        "Service-layer exceptions (OrderError, CartError, CheckInError) are consistently raised rather than returning None on failure",
+        "Payment provider plugin interface (BasePaymentProvider) has a coherent, well-documented set of hooks despite its size",
+        "checkin.perform_checkin has a clear single responsibility — check in one position against one list"
+      ],
+      "issue_character": "The dominant issue is parameter overload: multiple public API functions accept 10+ parameters which are partly overlapping (user/auth/device patterns in order services) and partly doing multiple jobs (mail() attaching tickets, ical, invoices, cached files, or sending sync vs async in one function).",
+      "score_rationale": "The REST API layer is reasonably coherent — DRF conventions are followed and errors are translated consistently at view boundaries. The major drag is at the service layer public API where parameter counts routinely exceed 10 (mail has 17, perform_checkin has 12, _create_order has 9), with overloaded responsibilities and divergent base mixins between the stable and talk API subsystems. This level of parameter overload and cross-subsystem inconsistency puts the score at 55 — workable for developers who already know the codebase, but a significant onboarding and maintenance burden."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-01",
+      "summary": "mail() has 17 parameters covering multiple distinct concerns — parameter overload and API boundary confusion",
+      "related_files": ["app/eventyay/base/services/mail.py"],
+      "evidence": [
+        "Lines 70-91: email, subject, template, context, event, locale, order, position, headers, sender, event_bcc, event_reply_to, invoices, attach_tickets, auto_email, user, attach_ical, attach_cached_files, sync_send — 19 parameters total",
+        "The function handles: rendering, BCC logic, ticket attachment, ical attachment, file attachment, sync/async mode — at least 5 distinct concerns"
+      ],
+      "suggestion": "Extract attachment configuration into a dedicated MailAttachmentConfig dataclass; extract sync_send into a separate send_mail_sync() function; reduce mail() to: email, subject, template, context, event, order/position, locale, headers, sender + an optional MailAttachmentConfig",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "parameter_overload"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-02",
+      "summary": "perform_checkin has 12 parameters, several of which overlap (user, auth) or are poorly grouped",
+      "related_files": ["app/eventyay/base/services/checkin.py"],
+      "evidence": [
+        "Line 377: def perform_checkin(op, clist, given_answers, force, ignore_unpaid, nonce, datetime, questions_supported, user, auth, canceled_supported, type)",
+        "user and auth represent overlapping authentication sources; force, ignore_unpaid, canceled_supported, questions_supported are 4 boolean flags that could be a CheckinOptions object"
+      ],
+      "suggestion": "Introduce a CheckinOptions dataclass or named kwargs object for the boolean flags (force, ignore_unpaid, canceled_supported, questions_supported) to reduce the parameter surface to ~6",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "parameter_overload"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-03",
+      "summary": "WebHookViewSet.perform_update returns inst while DRF's contract expects None — inconsistent return in API surface",
+      "related_files": ["app/eventyay/api/views/webhooks.py"],
+      "evidence": [
+        "Line 39: 'return inst' in perform_update()",
+        "DRF ModelViewSet.perform_update() does not define a return value contract — callers that call super() and use the return value would be surprised"
+      ],
+      "suggestion": "Remove the 'return inst' — perform_update() should return None per DRF convention; if the updated instance is needed, store it on self or pass it differently",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-04",
+      "summary": "Two divergent API base mixin patterns (pure DRF vs PretalxViewSetMixin) create inconsistent API surface across subsystems",
+      "related_files": [
+        "app/eventyay/api/views/order.py",
+        "app/eventyay/api/views/speaker.py",
+        "app/eventyay/api/mixins.py"
+      ],
+      "evidence": [
+        "OrderViewSet (stable) uses viewsets.ModelViewSet directly with no versioning mixin",
+        "SpeakerViewSet (talk) uses PretalxViewSetMixin which handles versioned serializers via get_versioned_serializer()",
+        "A developer working on orders would not naturally look for versioning; a developer on speakers would expect it"
+      ],
+      "suggestion": "Evaluate applying PretalxViewSetMixin or a unified base class to stable API viewsets as well, or document the explicit architectural decision that stable endpoints are version-independent",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-05",
+      "summary": "Sync/async boundary between order services (sync) and user/chat services (async) is undocumented and creates an inconsistent public API",
+      "related_files": [
+        "app/eventyay/base/services/orders.py",
+        "app/eventyay/base/services/user.py",
+        "app/eventyay/base/services/chat.py"
+      ],
+      "evidence": [
+        "orders.py: all functions are synchronous",
+        "user.py: get_blocked_users, set_user_banned, delete_user, etc. are all @database_sync_to_async",
+        "A caller context that is synchronous cannot call user.py functions; a caller context that is async cannot call orders.py functions without running in a thread"
+      ],
+      "suggestion": "Add module-level docstrings indicating which services are async-only vs sync-only; consider providing thin sync wrappers for the async user service functions used in sync view contexts",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "mail() and perform_checkin parameter overload grew organically as features were added without refactoring the function signature",
+      "The stable/talk split created two separate development cultures with different API conventions that were never unified"
+    ],
+    "likely_symptoms": ["AC-05 (sync/async confusion) is most likely to cause runtime errors for new contributors who call user service functions from synchronous Django view code"],
+    "possible_false_positives": []
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "batch": "initialization_coupling",
+  "batch_index": 14,
+  "assessments": {"initialization_coupling": 58.0},
+  "dimension_notes": {
+    "initialization_coupling": {
+      "evidence": [
+        "app/eventyay/base/models/event.py line 84: TALK_HOSTNAME = settings.TALK_HOSTNAME — module-level constant computed from settings at import time; if settings.TALK_HOSTNAME changes (e.g., in tests via override_settings), all code referencing the cached TALK_HOSTNAME sees the stale value",
+        "app/eventyay/common/language.py lines 9-10: LANGUAGE_CODES_MAPPING and LANGUAGE_NAMES are module-level constants derived from settings.LANGUAGES_INFORMATION and global_settings.LANGUAGES at import time — same stale-snapshot risk in test overrides",
+        "app/eventyay/base/i18n.py line 73: ALLOWED_LANGUAGES = dict(settings.LANGUAGES) — module-level constant from settings; same pattern",
+        "app/eventyay/agenda/management/commands/export_schedule_html.py line 19: SERVER_NAME = settings.SITE_URL.split('://')[1] — module-level constant derived from settings.SITE_URL at import time, used in management command",
+        "app/eventyay/multidomain/views.py line 27 and app/eventyay/features/live/views.py line 27: VIDEO_DIST_DIR = cast(Path, settings.STATIC_ROOT) / 'video' — module-level Path derived from settings.STATIC_ROOT",
+        "app/eventyay/common/templatetags/vite.py line 18: MANIFEST_PATH = cast(Path, settings.STATIC_ROOT) / 'schedule-editor' / 'schedule-editor-manifest.json' — module-level path from settings",
+        "app/eventyay/api/webhooks.py lines 24, 59-71: _ALL_EVENTS = None global with a lazy-populate pattern via get_all_webhook_events(); this is a correct lazy singleton but creates implicit initialization ordering — if get_all_webhook_events() is called before all Django apps are ready, app_cache may be empty",
+        "app/eventyay/base/signals.py lines 14-21: app_cache = {} module-level mutable dict populated lazily by _populate_app_cache() after apps.check_apps_ready(); correct guard in place, but the global mutable dict is shared state that any test modifying app configs could pollute",
+        "app/eventyay/base/apps.py lines 29-32: module-level 'try: import eventyay.celery_app as celery' outside the AppConfig class — executes at Python import time, not at Django ready(); the ImportError is silenced, so failed celery imports are invisible",
+        "app/eventyay/eventyay_common/views/account/basic.py line 41: VALID_LANGUAGE_CODES = {code for code, __ in settings.LANGUAGES} — module-level set computed at import time from settings",
+        "app/eventyay/base/services/locking.py line 12: logger = logging.getLogger('pretix.base.locking') — uses old pretix namespace in logger name; minor but reveals residual coupling to legacy naming",
+        "app/eventyay/base/services/notifications.py line 24: _event, _at, notify_specific, notify_global = None, None, None, None — module-level mutable state for notification system; correct lazy init but all four variables must be initialized before any concurrent notification triggers"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "initialization_coupling": {
+      "strengths": [
+        "Django AppConfig.ready() is used in base/apps.py to defer most signal registrations to after apps are ready",
+        "app_cache in base/signals.py uses apps.check_apps_ready() guard before population",
+        "Celery import in base/apps.py uses try/except to avoid hard dependency on celery at import time",
+        "_ALL_EVENTS lazy global in webhooks.py is correctly initialized to None and populated on first call, avoiding eager side effects"
+      ],
+      "issue_character": "The dominant issue is a repeated pattern of module-level constants computed from settings at import time (TALK_HOSTNAME, ALLOWED_LANGUAGES, VIDEO_DIST_DIR, MANIFEST_PATH, SERVER_NAME, VALID_LANGUAGE_CODES), creating stale-snapshot risks in test environments and any runtime that changes settings after initial import.",
+      "score_rationale": "The codebase correctly uses Django's AppConfig.ready() for signal registration and guards lazy globals with readiness checks — both strong practices. However, at least 7 distinct module-level constants are computed directly from Django settings at import time rather than being accessed dynamically, creating known fragility for test isolation and settings overrides. The module-level Celery import outside AppConfig in base/apps.py silently swallows ImportError at import time, which is an initialization side-effect risk. Score of 58 reflects solid Django idiom adherence partially offset by widespread settings-snapshot coupling."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-01",
+      "summary": "TALK_HOSTNAME computed from settings at module import time in event.py, creating stale-snapshot risk",
+      "related_files": ["app/eventyay/base/models/event.py"],
+      "evidence": [
+        "Line 84: TALK_HOSTNAME = settings.TALK_HOSTNAME — this is evaluated once when the module is first imported",
+        "Any test using override_settings(TALK_HOSTNAME=...) or any code that reads settings after the module is cached will see the original value, not the overridden one"
+      ],
+      "suggestion": "Remove the module-level constant. Access settings.TALK_HOSTNAME directly at call sites, or define a small accessor function: def get_talk_hostname(): return settings.TALK_HOSTNAME. This costs negligible runtime overhead and is consistent with Django best practice of not caching settings at module level.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "settings_snapshot"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-02",
+      "summary": "Multiple module-level constants derived from settings at import time across several files",
+      "related_files": [
+        "app/eventyay/common/language.py",
+        "app/eventyay/base/i18n.py",
+        "app/eventyay/agenda/management/commands/export_schedule_html.py",
+        "app/eventyay/multidomain/views.py",
+        "app/eventyay/features/live/views.py",
+        "app/eventyay/common/templatetags/vite.py",
+        "app/eventyay/eventyay_common/views/account/basic.py"
+      ],
+      "evidence": [
+        "common/language.py: LANGUAGE_CODES_MAPPING = {language.lower(): language for language in settings.LANGUAGES_INFORMATION}",
+        "base/i18n.py: ALLOWED_LANGUAGES = dict(settings.LANGUAGES)",
+        "export_schedule_html.py: SERVER_NAME = settings.SITE_URL.split('://')[1]",
+        "multidomain/views.py and features/live/views.py: VIDEO_DIST_DIR = cast(Path, settings.STATIC_ROOT) / 'video'",
+        "vite.py: MANIFEST_PATH = cast(Path, settings.STATIC_ROOT) / 'schedule-editor/...'",
+        "account/basic.py: VALID_LANGUAGE_CODES = {code for code, __ in settings.LANGUAGES}"
+      ],
+      "suggestion": "Convert all of these to lazy accessors or functools.lru_cache(None) functions (which can be cache-cleared in tests). For Path derivations like VIDEO_DIST_DIR, use a module-level function rather than a constant. For language mappings that are expensive to rebuild, use django.test.signals.setting_changed to invalidate the cache. Coordinate the fix across all 7 files in a single refactor pass.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "settings_snapshot"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-03",
+      "summary": "Module-level Celery import in base/apps.py executes outside AppConfig.ready() with silent failure",
+      "related_files": ["app/eventyay/base/apps.py"],
+      "evidence": [
+        "Lines 29-32: 'try: import eventyay.celery_app as celery # NOQA\\nexcept ImportError: pass' — this is outside the EventyayBaseConfig class, executing at Python import time",
+        "The ImportError is silenced, so a mis-installed or unavailable celery package produces no diagnostic output",
+        "The import appears redundant — line 18-21 inside ready() already imports celery_app with the same silent-ignore pattern"
+      ],
+      "suggestion": "Remove the duplicate module-level Celery import (lines 29-32). The import inside ready() (lines 18-21) already handles the celery initialization. If the module-level import is needed for a specific Celery autodiscovery reason, move it inside ready() and add a log warning on ImportError.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Django settings-snapshot pattern (computing module-level constants from settings) is a common anti-pattern in Django codebases; it was likely written before test isolation needs were identified",
+      "The merge of multiple legacy codebases (pretix, pretalx) into eventyay brought initialization patterns from each origin without harmonization"
+    ],
+    "likely_symptoms": ["IC-01", "IC-02"],
+    "possible_false_positives": ["_ALL_EVENTS global in webhooks.py — this is a valid lazy singleton with correct None initialization, not an initialization coupling defect"]
+  }
+}

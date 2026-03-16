@@ -95,7 +95,7 @@ class ExportersMixin:
         for k, v in d.items():
             if isinstance(v, set):
                 d[k] = list(v)
-        async_result = self.do_export(cf, instance, d)
+        async_result = self.dispatch_export_task(cf, instance, d)
 
         url_kwargs = {
             'asyncid': str(async_result.id),
@@ -126,7 +126,7 @@ class EventExportersViewSet(ExportersMixin, viewsets.ViewSet):
             exporters.append(ex)
         return exporters
 
-    def do_export(self, cf, instance, data):
+    def dispatch_export_task(self, cf, instance, data):
         return export.apply_async(args=(self.request.event.id, str(cf.id), instance.identifier, data))
 
 
@@ -157,7 +157,7 @@ class OrganizerExportersViewSet(ExportersMixin, viewsets.ViewSet):
             )
         }
 
-    def do_export(self, cf, instance, data):
+    def dispatch_export_task(self, cf, instance, data):
         return multiexport.apply_async(
             kwargs={
                 'organizer': self.request.organizer.id,

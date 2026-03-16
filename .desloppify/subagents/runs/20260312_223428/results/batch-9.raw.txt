@@ -1,0 +1,159 @@
+{
+  "batch": "mid_level_elegance",
+  "batch_index": 9,
+  "assessments": {
+    "mid_level_elegance": 54.0
+  },
+  "dimension_notes": {
+    "mid_level_elegance": {
+      "evidence": [
+        "services/announcement.py functions use inconsistent `event` param types: create_announcement receives an Event object; get_announcement and update_announcement receive an event ID (UUID). The caller in modules/announcement.py passes self.consumer.event on line 24 but self.consumer.event.id on lines 44 and 47, making the seam untrustworthy.",
+        "services/event.py config_patch orchestration in features/live/modules/event.py (lines 123-131) calls `event.save()` directly via database_sync_to_async, then immediately calls `save_event()` which calls `event.save()` again internally. This is a double-save across the module boundary with no comment explaining why, creating redundancy and subtle race risk.",
+        "services/event.py get_event_config_for_user returns both 'world' and 'event' keys pointing to the same dict object (line 232-233). The compatibility shim is undocumented from the caller side and makes the output contract ambiguous — callers cannot tell which key is canonical.",
+        "services/event.py permission translation logic (world_aliases, lines 220-228) performs ad-hoc string mapping (event.view -> world:view, event: prefix substitution) inside the data-assembly function rather than in a dedicated translation layer. This glue logic is scattered: both get_event_config_for_user and the consumer/auth layer must agree on these strings without a shared canonical mapping.",
+        "services/connections.py get_user_connection_count (lines 58-62) contains a bare print() debug statement that crosses the boundary back to stdout, leaking internal state from a service layer function that should produce only its return value.",
+        "Announcement.send_invite in models/access_code.py constructs a QueuedMail inside the model layer and calls .send() immediately, coupling the model layer to mail dispatch rather than delegating that to the services layer.",
+        "The _get_event/_get_room/_get_channel / get_event/get_room/get_channel split-pair pattern (private sync + public async wrapper) is applied inconsistently: services/event.py and services/chat.py use it, but get_announcements and create_announcement are simple @database_sync_to_async functions with no private/public split, making the async wrapping pattern non-uniform across sibling services.",
+        "apps.py ready() imports modules (exporter, payment, exporters, invoice, notifications, email) purely for their side-effects, with no explicit declaration of what registration or signal connection each performs. This is a silent coupling at boot time with no seam documentation.",
+        "admin.py imports raw module objects (auth, base, billing, checkin, choices, devices, event, fields, giftcards, invoices, log, notifications, orders, organizer, page, poll, poster, roomquestion, roulette, seating, tax, vouchers, waitinglist, room, exhibitor, chat) alongside model class names in the same import statement, creating a mixed direct-module/direct-class access pattern that makes the boundary between 'use the model from __init__' and 'use the module directly' opaque.",
+        "services/user.py login() assembles LoginResult by pulling from ChatService, ExhibitionService, and get_event_config_for_user in sequence with no error boundary between them — if any one call fails, the partial state is silently abandoned and no lifecycle recovery is documented."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "mid_level_elegance": {
+      "strengths": [
+        "The @database_sync_to_async wrapping convention for async boundary crossings is consistently applied across services/announcement.py, services/chat.py, and services/event.py, making the sync/async contract visible at each service function.",
+        "serialize_public() as the single translation point from model to wire format is a clear and consistently used boundary pattern across Chat, Announcement, Poll, and Audit models.",
+        "Services are organized as focused, domain-named files (chat.py, poll.py, announcement.py, bbb.py) rather than a single service blob, so change boundaries are mostly predictable.",
+        "ChatService uses a class-based service object with an event context, which groups related operations cleanly and makes the event-scoping explicit at construction time."
+      ],
+      "issue_character": "The seam defects are mostly local boundary inconsistencies — mismatched parameter types for the same concept across sibling functions, redundant save calls where the orchestrator and the service both persist, and ad-hoc compatibility shims that duplicate or alias keys without a defined canonical contract — rather than structural layer violations.",
+      "score_rationale": "The codebase reaches a functional mid-range: the async boundary wrapping pattern and serialize_public() convention show intentional seam design. However, the announcement service's inconsistent event/event-id parameter type across sibling functions, the double-save in config_patch, the undocumented dual-key world/event output, the debug print() leaked through a service boundary, and mail dispatch embedded in a model method are all seam-quality failures that a mid-level developer would encounter when trying to extend or compose these modules. These are not isolated one-off issues — they form a pattern of incomplete seam discipline that scores below the 60-65 range expected of a codebase where handoffs are mostly explicit and unsurprising."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "announcement_event_param_type_mismatch",
+      "summary": "Announcement service functions take inconsistent `event` types: object vs ID",
+      "related_files": [
+        "app/eventyay/base/services/announcement.py",
+        "app/eventyay/features/live/modules/announcement.py"
+      ],
+      "evidence": [
+        "create_announcement(**kwargs) passes kwargs directly to Announcement.objects.create(), so callers pass event=<Event object>.",
+        "get_announcement(pk, event) and update_announcement(**kwargs) use event as a lookup key against Announcement.objects.get(pk=pk, event=event), which works with either object or ID, but the caller in modules/announcement.py passes self.consumer.event (object) for create but self.consumer.event.id (UUID) for get and update — lines 24, 44, 47."
+      ],
+      "suggestion": "Standardize all announcement service functions to accept an event ID (UUID) explicitly and do the lookup internally. Remove the implicit type ambiguity by adding a typed parameter (event_id: uuid.UUID) and keeping the ORM filter consistent.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "boundary_type_inconsistency",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "config_patch_double_save",
+      "summary": "config_patch calls event.save() then save_event() which calls event.save() again",
+      "related_files": [
+        "app/eventyay/features/live/modules/event.py",
+        "app/eventyay/base/services/event.py"
+      ],
+      "evidence": [
+        "modules/event.py line 123: await database_sync_to_async(self.consumer.event.save)(update_fields=list(update_fields))",
+        "modules/event.py line 126: new = await save_event(self.consumer.event, list(update_fields), by_user=self.consumer.user, old_data=old)",
+        "services/event.py save_event() line 449: event.save(update_fields=update_fields) — a second identical save."
+      ],
+      "suggestion": "Remove the direct event.save() call in config_patch and rely solely on save_event() to perform the save and the audit log in one atomic boundary. save_event() was designed to own this boundary; the caller should not pre-save.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "redundant_boundary_persistence",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "dual_key_world_event_output",
+      "summary": "get_event_config_for_user emits both 'world' and 'event' keys pointing to the same dict with no canonical contract",
+      "related_files": [
+        "app/eventyay/base/services/event.py"
+      ],
+      "evidence": [
+        "services/event.py lines 232-233: result = {'world': world_block, 'event': world_block, ...} — same dict object under two keys.",
+        "Comment reads: 'Provide both keys for compatibility: frontend expects world, prior code used event' — this is an undocumented shim with no sunset plan."
+      ],
+      "suggestion": "Document the compat shim with a deprecation note and a ticket/TODO to remove the 'event' key once the frontend is confirmed to use only 'world'. At minimum, make the alias explicit in the function contract (docstring or type annotation) so callers know which key is canonical.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "undocumented_compat_shim"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "permission_alias_glue_in_data_assembly",
+      "summary": "Ad-hoc event:* -> world:* permission string translation is embedded in the data-assembly function",
+      "related_files": [
+        "app/eventyay/base/services/event.py"
+      ],
+      "evidence": [
+        "services/event.py lines 220-228: world_aliases loop manually maps 'event.view' -> 'world:view', 'event.update' -> 'world:update', and event: prefix to world: for all other permissions.",
+        "This translation is only performed in get_event_config_for_user, but callers at other boundaries that emit permission strings independently may not apply the same aliases."
+      ],
+      "suggestion": "Extract the permission string aliasing into a named function (e.g., expand_legacy_permission_aliases(perms)) so the same translation is available at all permission-emitting boundaries and is testable in isolation.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "boundary_glue_entropy"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "debug_print_in_service_boundary",
+      "summary": "get_user_connection_count contains a bare print() statement in a service-layer function",
+      "related_files": [
+        "app/eventyay/base/services/connections.py"
+      ],
+      "evidence": [
+        "connections.py lines 58-62: print(f'connections.list.user:{user_id}', await redis.llen(f'connections.list.user:{user_id}')) is called inside get_user_connection_count before the return."
+      ],
+      "suggestion": "Remove the print() statement. If debug-level visibility is needed, use logger.debug() with a named logger. The function's output boundary should be its return value only.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "mail_dispatch_in_model_layer",
+      "summary": "SubmitterAccessCode.send_invite dispatches mail directly from the model layer",
+      "related_files": [
+        "app/eventyay/base/models/access_code.py"
+      ],
+      "evidence": [
+        "access_code.py lines 99-112: send_invite imports QueuedMail from models and calls .send() immediately, embedding mail dispatch inside the model rather than delegating to the services layer."
+      ],
+      "suggestion": "Move the send_invite logic into a service function (e.g., services/access_code.py or services/mail.py) that accepts the access code and recipient list. The model method can remain as a thin coordinator that calls the service, or be removed in favor of the service being called directly.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "layer_boundary_violation"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Incremental merging of two previously separate codebases (ticket/commerce from pretix heritage and video/live from a separate venueless/eventyay-video lineage) has left seams where shared concepts (event reference, permission strings) have subtly incompatible conventions that were never reconciled into a single canonical form.",
+      "Service functions were added piecemeal without a defined service contract template, leading to inconsistent parameter typing, mixed sync/async wrapping styles, and partial adherence to the serialize_public output pattern.",
+      "The orchestration layer (live/modules/) was built on top of services without a clear rule about which layer owns persistence, resulting in caller-initiated saves followed by service-initiated saves for the same operation."
+    ],
+    "likely_symptoms": [
+      "announcement_event_param_type_mismatch",
+      "dual_key_world_event_output"
+    ],
+    "possible_false_positives": [
+      "mail_dispatch_in_model_layer — the alters_data flag and the pattern may be intentional given Django admin usage; the boundary violation is real but the fix may conflict with how admin views currently call send_invite"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 import json
-from contextlib import suppress
+import logging
 
 from django.db import IntegrityError, models
 from django.utils.crypto import get_random_string
@@ -8,6 +8,8 @@ from django_scopes import ScopedManager, scopes_disabled
 from rules.contrib.models import RulesModelBase, RulesModelMixin
 
 from eventyay.helpers.json import CustomJSONEncoder
+
+logger = logging.getLogger(__name__)
 
 SENSITIVE_KEYS = ['password', 'secret', 'api_key']
 
@@ -180,14 +182,16 @@ class FileCleanupMixin:
         for field in self._file_fields:
             value = getattr(self, field, None)
             if value:
-                with suppress(Exception):
+                try:
                     value.delete(save=False)
+                except OSError as e:
+                    logger.warning('Failed to delete file %s for %s pk=%s: %s', value.name, self.__class__.__name__, self.pk, e)
 
     def delete(self, *args, **kwargs):
         self._delete_files()
         return super().delete(*args, **kwargs)
 
-    def process_image(self, field, generate_thumbnail=False):
+    def schedule_image_processing(self, field, generate_thumbnail=False):
         from eventyay.common.tasks import task_process_image
 
         task_process_image.apply_async(
@@ -272,17 +276,17 @@ class OrderedModel:
     def get_order_queryset(**kwargs):
         raise NotImplementedError
 
-    def _get_attribute(self, attribute):
+    def _resolve_dotted_attr(self, attribute):
         result = self
         for part in attribute.split('.'):
             result = getattr(result, part)
         return result
 
     def get_down_url(self):
-        return self._get_attribute(self.order_down_url)
+        return self._resolve_dotted_attr(self.order_down_url)
 
     def get_up_url(self):
-        return self._get_attribute(self.order_up_url)
+        return self._resolve_dotted_attr(self.order_up_url)
 
     def up(self):
         return self._move(up=True)

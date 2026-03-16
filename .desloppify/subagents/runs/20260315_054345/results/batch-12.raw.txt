@@ -1,0 +1,109 @@
+{
+  "batch": "incomplete_migration",
+  "batch_index": 12,
+  "assessments": {
+    "incomplete_migration": 58.0
+  },
+  "dimension_notes": {
+    "incomplete_migration": {
+      "evidence": [
+        "app/eventyay/api/pagination.py: PageNumberPagination explicitly maintains a LimitOffsetPagination fallback path with a comment 'TODO remove implementation details once the legacy API is getting removed' — old and new pagination APIs coexist.",
+        "app/eventyay/api/views/submission.py imports LegacySubmissionOrgaSerializer, LegacySubmissionReviewerSerializer, LegacySubmissionSerializer alongside current SubmissionOrgaSerializer, SubmissionSerializer — two generations active in the same view file.",
+        "app/eventyay/base/models/submission.py defines both SubmissionFavouriteDeprecated (old model with DB table 'submission_submission_favourites') and SubmissionFavourite (new PretalxModel) side by side; SubmissionFavouriteDeprecatedView is still wired in api/urls.py and issues DeprecationWarning at runtime on every request.",
+        "app/eventyay/base/services/orders.py: mark_order_paid() stub raises NotImplementedError 'no longer supported since pretix 1.17' — a pretix-to-eventyay migration remnant.",
+        "app/eventyay/control/logdisplay.py: PRETIX_LEGACY_ALIASES dict maps 47+ pretix.* and pretalx.* action type prefixes to eventyay.* equivalents — a permanent backward-compat shim for old log entries; comment says 'for backward compatibility' but no cleanup plan exists.",
+        "app/eventyay/orga/permissions.py: a one-line file wiring 'base.change_settings' with a TODO comment 'Legacy for plugins. TODO remove after v2025.1.0' — version has passed.",
+        "app/eventyay/api/versions.py defines LEGACY and DEPRECATED_VERSIONS but the LEGACY version is still routed and active through SUPPORTED_VERSIONS.",
+        "app/eventyay/control/logdisplay.py line 736: inline comment '# deprecated' with no further context or removal plan."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "incomplete_migration": {
+      "strengths": [
+        "The LEGACY API version is explicitly named and isolated in api/versions.py, making it identifiable rather than hidden.",
+        "SubmissionFavouriteDeprecatedView issues runtime DeprecationWarning, giving API callers a migration signal.",
+        "The logdisplay alias map is in a single location rather than scattered across many files."
+      ],
+      "issue_character": "The codebase has multiple stalled migration fronts — a deprecated API version still in SUPPORTED_VERSIONS, dual-generation model/view pairs for favourites, a pretix stub function, and a version-tagged TODO past its deadline — forming a pattern of migrations started but not completed.",
+      "score_rationale": "The score lands below the 70 (adequate) anchor because the incomplete migration artifacts are not cosmetic: the SubmissionFavouriteDeprecated model and view are still invoked in production routes, the legacy pagination path executes real code on every limit+offset request, and orga/permissions.py has a version-deadline TODO for v2025.1.0 that has expired. This is substantially worse than a codebase where deprecated paths are merely present but not called."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-01",
+      "summary": "SubmissionFavouriteDeprecated model, serializer, and view still wired in production routes despite new SubmissionFavourite replacement",
+      "related_files": [
+        "app/eventyay/base/models/submission.py",
+        "app/eventyay/api/views/submission.py",
+        "app/eventyay/api/urls.py"
+      ],
+      "evidence": [
+        "submission.py lines 1081-1112: SubmissionFavouriteDeprecated and SubmissionFavouriteDeprecatedSerializer defined alongside the replacement SubmissionFavourite model.",
+        "api/views/submission.py lines 458-534: SubmissionFavouriteDeprecatedView dispatches runtime DeprecationWarning but still fully processes GET and POST.",
+        "api/urls.py line 251: route still registered pointing to SubmissionFavouriteDeprecatedView."
+      ],
+      "suggestion": "Determine if any live client calls the deprecated favourite endpoint; if not, remove the URL registration, the view, and the model. If yes, set a hard sunset date and 410-stub the route after that date.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "stalled_migration"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-02",
+      "summary": "Expired TODO in orga/permissions.py: legacy rule 'base.change_settings' should have been removed after v2025.1.0",
+      "related_files": ["app/eventyay/orga/permissions.py"],
+      "evidence": [
+        "Line 5-6: '# Legacy for plugins. TODO remove after v2025.1.0' with `rules.add_perm('base.change_settings', can_change_event_settings)` still present as of 2026-03-15."
+      ],
+      "suggestion": "Audit whether any active plugins use 'base.change_settings'. If none, delete the file. If some do, document them and set a new concrete deadline.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "stalled_migration"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-03",
+      "summary": "PageNumberPagination maintains dual-mode logic for legacy limit/offset API with no removal plan",
+      "related_files": ["app/eventyay/api/pagination.py"],
+      "evidence": [
+        "Lines 13-38: PageNumberPagination checks `is_limit_offset` on every request and branches into LimitOffsetPagination.paginate_queryset and .get_paginated_response — a shim that executes on every affected API call.",
+        "Docstring says 'TODO remove implementation details once the legacy API is getting removed' with no tracking reference."
+      ],
+      "suggestion": "Link the TODO to the LEGACY version deprecation tracked in api/versions.py. Once LEGACY is removed from SUPPORTED_VERSIONS, delete the is_limit_offset branch and LimitOffsetPagination fallback.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "legacy_api_coexistence"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-04",
+      "summary": "PRETIX_LEGACY_ALIASES shim in logdisplay.py maps 47+ pretix/pretalx action types with no retirement path",
+      "related_files": ["app/eventyay/control/logdisplay.py"],
+      "evidence": [
+        "Lines 323-462: 47-entry dict maps pretix.* and pretalx.* action type strings to eventyay.* equivalents.",
+        "Comment explains backward compatibility for old DB log entries, but there is no mechanism to detect when old entries age out or are cleaned."
+      ],
+      "suggestion": "Add a management command or periodic task to detect the oldest log entry with a legacy-prefix action_type. Document the retention window; once exceeded, drop the alias dict in a future release.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "legacy_data_shim"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Eventyay is a merger of two upstream products (pretix ticketing + pretalx talks); many incomplete migrations are artifacts of combining two codebases that had diverged naming.",
+      "Version-tagged TODOs lack automated enforcement, allowing them to expire silently."
+    ],
+    "likely_symptoms": ["IM-01", "IM-02", "IM-03", "IM-04"],
+    "possible_false_positives": []
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "batch": "abstraction_fitness",
+  "batch_index": 6,
+  "assessments": {
+    "abstraction_fitness": 79.0
+  },
+  "dimension_notes": {
+    "abstraction_fitness": {
+      "evidence": [
+        "20 facade __init__.py modules are intentional re-export surfaces stabilizing public import paths (base/models/__init__.py re-exports 144 symbols, common/views/__init__.py 10 symbols, etc.) — correctly skipped per rubric",
+        "base/services/orders.py, base/services/mail.py, and base/services/checkin.py are direct domain logic with deep call chains (chain_count 566/566/high) — indirection comes from genuine domain complexity, not wrapper layers",
+        "StatsD class in core/utils/statsd.py delegates timing/increment/decrement/gauge to _update, but _update adds real policy (env-tag normalization, metric-type encoding) — legitimate delegation",
+        "BasePaymentProvider in base/payment.py is a genuine plugin extension point with many concrete implementations across the codebase — not a single-impl interface",
+        "encode_email() is independently defined in agenda/views/utils.py (line 193) and eventyay_common/utils.py (line 42) with identical logic (SHA-256 hash, first 7 chars, uppercased); callers import from different sources",
+        "api/utils.py get_protocol() is a 3-line wrapper around urlparse(url).scheme.lower() with a single caller (api/views/event.py:561) and adds no policy",
+        "parse_ics_token() in agenda/views/utils.py (line 80-82) is a two-line pass-through that unpacks one return value from load_starred_ics_token and discards the other — no policy added",
+        "mail() function in base/services/mail.py has 17 parameters; the wide signature is a legitimate domain API for a complex operation but attachment-related params (invoices, attach_tickets, attach_ical, attach_cached_files) could be grouped",
+        "control/forms/__init__.py has a comment identifying it as a backwards-compatibility shim — legitimate, skip-listed pattern",
+        "base/tasks.py is a Celery autodiscovery shim with a clarifying docstring — intentional, skip-listed pattern"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {
+        "abstraction_leverage": 80.0,
+        "indirection_cost": 82.0,
+        "interface_honesty": 88.0,
+        "delegation_density": 78.0,
+        "definition_directness": 72.0,
+        "type_discipline": 74.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "abstraction_fitness": {
+      "strengths": [
+        "Domain service modules (base/services/orders.py, base/services/mail.py, base/services/checkin.py) are direct implementations with real logic — no gratuitous wrapper layers between callers and the work",
+        "BasePaymentProvider and BaseAuthBackend are genuine plugin extension points with multiple real implementations and documented intent, not premature protocol abstractions",
+        "The 20 re-export __init__.py facades correctly stabilize public import paths for packages like base/models, common/views, and eventyay_common/views/account — all have __all__ lists or NOQA comments signaling intent",
+        "StatsD delegation to _update is earned: _update adds statsd-protocol encoding, env-tag injection, and list normalization that four public methods share",
+        "Helper utilities (agenda/views/utils.py, eventyay_common/utils.py, schedule/utils.py) are domain-specific, not generic — each addresses a clear bounded concern"
+      ],
+      "issue_character": "Issues are isolated misplacements rather than systemic indirection: one duplicated utility cross-package, one genuinely trivial single-use wrapper, and one thin pass-through — none of which represent a recurring architectural habit of over-layering.",
+      "score_rationale": "The codebase scores well on abstraction fitness by global anchors: the large service modules (orders, mail, checkin) are direct domain code and the 20 facade __init__.py modules serve documented stabilization purposes. The score is pulled below 80 primarily by the encode_email duplication (identical logic defined in two packages, used from four call sites split between them — a concrete resolution failure for a shared utility) and the api/utils.get_protocol single-use trivial wrapper. These are recurring enough to constitute 'moments of friction' per the 80-anchor but not the systemic layer cost of the 60-anchor."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "encode_email_duplication",
+      "summary": "encode_email() defined identically in two packages; callers split between them",
+      "related_files": [
+        "app/eventyay/agenda/views/utils.py",
+        "app/eventyay/eventyay_common/utils.py",
+        "app/eventyay/agenda/views/talk.py",
+        "app/eventyay/presale/views/order.py",
+        "app/eventyay/presale/views/event.py",
+        "app/eventyay/eventyay_common/views/event.py"
+      ],
+      "evidence": [
+        "agenda/views/utils.py line 193: def encode_email(email) — SHA-256, hexdigest[:7].upper()",
+        "eventyay_common/utils.py line 42: def encode_email(email) — identical implementation (SHA-256, hexdigest[:7].upper())",
+        "agenda/views/talk.py imports from agenda/views/utils; presale/views/order.py and presale/views/event.py import from eventyay_common/utils; eventyay_common/views/event.py imports from eventyay_common/utils — four call sites split across two definitions"
+      ],
+      "suggestion": "Delete agenda/views/utils.encode_email. Move the canonical definition to a shared helpers module (e.g. eventyay/helpers/tokens.py or eventyay/base/utils.py) and update all four import sites to use the single source. The eventyay_common/utils.py copy is the better-documented version (docstring explains the UID-token purpose).",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "duplicated_cross_package_utility"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "api_utils_get_protocol_trivial_wrapper",
+      "summary": "api/utils.get_protocol is a 3-line single-use wrapper around urlparse().scheme.lower()",
+      "related_files": [
+        "app/eventyay/api/utils.py",
+        "app/eventyay/api/views/event.py"
+      ],
+      "evidence": [
+        "api/utils.py: get_protocol(url) parses url with urlparse, returns parsed.scheme.lower() — entire file is 7 lines including the import",
+        "api/views/event.py line 561: protocol = get_protocol(site_url) — only call site in the codebase",
+        "No policy is added: no error handling, no scheme normalization beyond lowercase, no validation"
+      ],
+      "suggestion": "Delete app/eventyay/api/utils.py. Inline the call site in api/views/event.py as `protocol = urlparse(site_url).scheme.lower()` and add `from urllib.parse import urlparse` to that file's imports.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "trivial_single_use_wrapper"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "parse_ics_token_pass_through",
+      "summary": "parse_ics_token() is a two-line pass-through that discards one return value of load_starred_ics_token",
+      "related_files": [
+        "app/eventyay/agenda/views/utils.py"
+      ],
+      "evidence": [
+        "agenda/views/utils.py lines 80-82: parse_ics_token unpacks (user_id, _expiry_dt) from load_starred_ics_token and returns only user_id — the underscore-prefixed discard makes the intent clear but the wrapper adds nothing",
+        "The single call site in get_schedule_exporter_content (line 220) could call load_starred_ics_token directly and unpack there, or just index [0]"
+      ],
+      "suggestion": "Remove parse_ics_token. In get_schedule_exporter_content (line 220), replace `user_id = parse_ics_token(token, event=request.event)` with `user_id, _ = load_starred_ics_token(token, event=request.event)`. This makes the discarded return value visible at the call site with no additional indirection.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "trivial_single_use_wrapper"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Duplicate utility functions arise from the merged codebase heritage (pretix + pretalx): encode_email was independently needed in both the presale/video-token domain and the agenda/talk-token domain and was written twice rather than extracted to a shared helpers module",
+      "The api/utils.py and parse_ics_token pass-throughs are likely artifacts of refactoring where an earlier helper was extracted but the inline opportunity was not taken on cleanup"
+    ],
+    "likely_symptoms": [
+      "parse_ics_token_pass_through",
+      "api_utils_get_protocol_trivial_wrapper"
+    ],
+    "possible_false_positives": []
+  }
+}

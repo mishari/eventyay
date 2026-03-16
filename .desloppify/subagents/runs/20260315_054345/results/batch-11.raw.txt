@@ -1,0 +1,74 @@
+{
+  "batch": "ai_generated_debt",
+  "batch_index": 11,
+  "assessments": {
+    "ai_generated_debt": 74.0
+  },
+  "dimension_notes": {
+    "ai_generated_debt": {
+      "evidence": [
+        "app/eventyay/base/signals.py check_plugin_active() contains heavy inline comment narration (e.g., '# Check if this receiver's app is actually a plugin', '# Performance optimization: fast-path for events with no plugins', '# Get the list of all available plugins (enabled + disabled)') that echo the code immediately below them without adding business insight.",
+        "app/eventyay/base/signals.py check_plugin_active() has 12 branches and duplicates the exclusion+compatibility check pattern three times across three terminal paths.",
+        "doc/conf.py wraps django.setup() in a try/except that catches Exception and prints a warning, then continues — a defensive pattern appropriate for a documentation build but verbose with a 4-line comment block explaining the approach.",
+        "app/eventyay/api/pagination.py PageNumberPagination docstring says 'TODO remove implementation details once the legacy API is getting removed' — indicating the comment itself is temporary scaffolding left behind.",
+        "app/eventyay/base/services/orders.py mark_order_paid() exists solely to raise NotImplementedError, a stub from pretix 1.17 that has no callers left but still occupies space.",
+        "app/eventyay/helpers/formats/de/formats.py is 3 lines of format constants with a comment referencing Django docs — clean and non-redundant.",
+        "app/eventyay/common/consts.py is a single constant with a clarifying comment — intentional and fine.",
+        "app/eventyay/api/versions.py comment blocks are well-targeted: the register_serializer decorator comment explains a non-obvious versioning mechanism."
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium"
+    }
+  },
+  "dimension_judgment": {
+    "ai_generated_debt": {
+      "strengths": [
+        "Most files use domain-specific naming (reactivate_order, CheckinList, SubmissionFavouriteDeprecated) — no generic handleData/processItem patterns observed.",
+        "Wrapper functions like get_all_plugins_grouped add real grouping/filtering logic, not pass-throughs.",
+        "app/eventyay/api/versions.py register_serializer and get_serializer_by_version are focused and honest — comments explain non-obvious design choices.",
+        "No entry/exit debug logging observed in the reviewed files."
+      ],
+      "issue_character": "Issues are primarily narrating comments and one defunct stub function, not pervasive boilerplate — the codebase is written by domain-aware developers but shows isolated AI-assisted verbosity in the signals plugin logic.",
+      "score_rationale": "The codebase scores above the 70 (adequate) anchor: domain language is consistent, wrappers earn their existence, and docstrings on complex functions are informative rather than restating. The score stays below 85 because check_plugin_active in signals.py exhibits dense narrating comments and triplicated terminal-branch logic that is characteristic of AI-assisted over-documentation, and the mark_order_paid dead stub has persisted past its usefulness."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "AID-01",
+      "summary": "check_plugin_active in signals.py has narrating comments that echo the code and triplicates terminal branch logic",
+      "related_files": ["app/eventyay/base/signals.py"],
+      "evidence": [
+        "Lines 66-113: every branch opens with a comment that restates the condition immediately below (e.g., '# If no sender (no event context) and it's a core module, allow it' above `if sender is None and is_core_module: return True`).",
+        "The exclusion+compatibility guard (`if app.name not in excluded_plugins: if not hasattr(app, 'compatibility_errors') ...`) is copy-pasted three times across the enabled-plugin, non-plugin, and core-module-no-app paths."
+      ],
+      "suggestion": "Extract the exclusion+compatibility guard into a private helper `_passes_exclusion_check(app, excluded_plugins) -> bool` and remove the narrating inline comments, keeping only the structural docstring on the outer function.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "AID-02",
+      "summary": "mark_order_paid is a dead stub that only raises NotImplementedError — no callers remain",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Line 153-154: `def mark_order_paid(*args, **kwargs): raise NotImplementedError('This method is no longer supported since pretix 1.17.')`",
+        "No callers found in the codebase via grep; the function signature uses *args/**kwargs, indicating it was retained only to preserve a call site that no longer exists."
+      ],
+      "suggestion": "Delete mark_order_paid entirely; if a migration concern remains, add a release note entry instead.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Plugin-gating logic in signals.py was likely authored or heavily revised with AI assistance, resulting in over-annotated, copy-paste branch duplication.",
+      "Pretix-origin stubs were not cleaned up when the codebase was migrated to eventyay."
+    ],
+    "likely_symptoms": ["AID-01", "AID-02"],
+    "possible_false_positives": []
+  }
+}

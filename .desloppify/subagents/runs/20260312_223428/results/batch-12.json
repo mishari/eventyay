@@ -1,0 +1,89 @@
+{
+  "batch": "authorization_consistency",
+  "batch_index": 12,
+  "assessments": {
+    "authorization_consistency": 76.0
+  },
+  "dimension_notes": {
+    "authorization_consistency": {
+      "evidence": [
+        "EventPermissionRequiredMixin with a class-level `permission` attribute is applied uniformly to all control views across checkin, orders, product, voucher, and organizer modules — the framework pattern is coherent and consistent.",
+        "API viewsets use EventPermission DRF class with `permission` (read) and `write_permission` (write) attributes, correctly splitting GET and mutating-method permission requirements.",
+        "CheckInListShow declares `permission = 'can_view_orders'` at the class level but its `post()` handler performs write operations (creating and deleting Checkin objects) and checks `'can_change_orders' not in request.eventpermset` at runtime. A user with only `can_view_orders` passes the mixin gate and enters the POST body before being redirected — the required permission for the write operation is not declared at the dispatch boundary.",
+        "Permission strings ('can_view_orders', 'can_change_orders', 'can_change_items', etc.) are used as magic string literals throughout views and API layers rather than constants imported from a shared location. They correspond to boolean model fields on Team but are not referenced as named constants.",
+        "CSVCheckinList.iterate_list re-applies the order status filter (lines 506-509) that _get_queryset already applied (lines 261-264), creating a trust boundary inconsistency between the two sibling exporters (PDFCheckinList does not re-apply this filter).",
+        "All ORM queries in the seed file are scoped to self.event (order__event=self.event or position__order__event=self.event), which is the correct multi-tenant pattern."
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {
+        "abstraction_leverage": 78.0,
+        "indirection_cost": 82.0,
+        "interface_honesty": 68.0,
+        "delegation_density": 80.0,
+        "definition_directness": 72.0,
+        "type_discipline": 75.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "authorization_consistency": {
+      "strengths": [
+        "EventPermissionRequiredMixin + class-level `permission` attribute provides a uniform, declarative auth pattern enforced at dispatch time across all control views — a developer can read a view's permission at a glance.",
+        "DRF API viewsets split `permission` (read) and `write_permission` (write) consistently, so GET vs POST/PUT/DELETE privileges are correctly differentiated at the framework level.",
+        "All ORM queries are event-scoped (order__event=self.event), so the multi-tenant boundary is consistently enforced in the data layer.",
+        "Exporters in the plugin correctly delegate all auth to their invoking views and carry no auth logic themselves, respecting the single responsibility of the framework auth layer."
+      ],
+      "issue_character": "The issues are a mix of one concrete trust-boundary defect (CheckInListShow.post gated at read permission but executing write operations) and one systemic low-grade issue (permission strings as magic literals with no shared constants), localized to the control-view and shared-permission layers rather than widespread across the codebase.",
+      "score_rationale": "The codebase has a clear, coherent authorization architecture that is broadly applied — a developer can predict auth behavior from view class declarations in most places. The CheckInListShow mixed-permission pattern is a real gap: a developer reviewing security would not immediately trust that all write paths are correctly guarded without reading each POST handler body individually. The magic-literal permission strings are a maintenance risk but not a security gap today. This places the codebase above 70 (patterns are mostly present and learnable) but below 80 (a developer reviewing the control layer will encounter this inconsistency and cannot fully trust the pattern they've learned from sibling views)."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "checkin_show_post_permission_mismatch",
+      "summary": "CheckInListShow declares read permission at class level but POST handler performs write operations requiring can_change_orders",
+      "related_files": [
+        "app/eventyay/control/views/checkin.py"
+      ],
+      "evidence": [
+        "CheckInListShow sets `permission = 'can_view_orders'` (line 29) — the EventPermissionRequiredMixin enforces this at dispatch time for all HTTP methods including POST.",
+        "CheckInListShow.post() (lines 125-220) creates and deletes Checkin objects (write operations), and checks `if 'can_change_orders' not in request.eventpermset` as a runtime guard (line 126). A user with only `can_view_orders` passes the mixin gate and enters the POST body.",
+        "Sibling write views in the same file (CheckinListCreate, CheckinListUpdate, CheckinListDelete) correctly declare `permission = 'can_change_event_settings'` at the class level, which is the consistent pattern across the rest of the codebase."
+      ],
+      "suggestion": "Either (a) set `permission = 'can_change_orders'` on CheckInListShow and handle the GET with a separate view or by checking can_view_orders inline for GET, or (b) use the same split-permission pattern as the API (define separate get/post dispatch based on required permission) so that POST requests are rejected at the mixin gate rather than inside the handler body.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "permission_strings_as_magic_literals",
+      "summary": "Permission strings ('can_view_orders', 'can_change_orders', etc.) are scattered as magic literals across view and API files instead of shared constants",
+      "related_files": [
+        "app/eventyay/control/views/checkin.py",
+        "app/eventyay/control/views/orders.py",
+        "app/eventyay/api/auth/permission.py",
+        "app/eventyay/base/models/organizer.py"
+      ],
+      "evidence": [
+        "The strings 'can_view_orders', 'can_change_orders', 'can_change_items', 'can_change_event_settings', etc. appear as inline string literals in `permission =` attributes and `has_event_permission()` calls across 20+ view files.",
+        "Team model in organizer.py defines these as boolean fields (line 367-378) and has a TEAM_PERMISSIONS dict (line 295), but this dict maps to rules functions, not the permission string constants — no importable string constants exist.",
+        "A typo in any one view's permission string silently bypasses auth enforcement (the mixin would see the unknown permission as falsy) with no static analysis to catch it."
+      ],
+      "suggestion": "Define permission name constants (e.g., PERM_VIEW_ORDERS = 'can_view_orders') in a shared module such as eventyay/base/permissions.py or eventyay/control/permissions.py, and import them wherever permission strings are used. This eliminates typo risk and enables static analysis.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The CheckInListShow mixed-permission pattern may be intentional to allow users with only view permission to see the list page (GET) while limiting the write action — but the implementation pushes the write-permission check into the handler body rather than the dispatch layer, creating an inconsistency with sibling views.",
+      "Permission strings as magic literals is a systemic pattern common in Django projects that rely on boolean model fields for ACL; the lack of constants is an organizational gap rather than a design error."
+    ],
+    "likely_symptoms": [],
+    "possible_false_positives": []
+  }
+}

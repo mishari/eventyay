@@ -1,0 +1,138 @@
+{
+  "batch": "naming_quality",
+  "batch_index": 5,
+  "assessments": {
+    "naming_quality": 62.0
+  },
+  "dimension_notes": {
+    "naming_quality": {
+      "evidence": [
+        "app/eventyay/api/views/version.py: VersionView.get() returns keys named 'pretix' and 'pretix_numeric' — the method name is fine but the response payload uses the wrong product name",
+        "app/eventyay/base/models/mixins.py: class LogMixin vs app/eventyay/base/models/base.py: class LoggingMixin — two names for the same concept within the same package; 'LogMixin' and 'LoggingMixin' are not distinguishable without reading source",
+        "app/eventyay/base/models/mixins.py: class PretalxModel — exported as the base model for the eventyay product; the name 'Pretalx' is a different product",
+        "app/eventyay/control/views/geo.py: GeoCodeView._use_opencage() and _use_mapquest() — both methods use variable name 'r' first for the HTTP response object (line 41: `r = requests.get(...)`) and then reuse the same name 'r' as the iteration variable in a list comprehension (line 46: `for r in d['results']`), causing shadowing",
+        "app/eventyay/base/signals.py: function check_plugin_active() — parameter name 'get_plugin_list_callable' is verbose and describes implementation detail ('callable') rather than role; 'get_plugins' or 'plugin_list_getter' would be clearer",
+        "app/eventyay/base/signals.py: function resolve_app_for_module() — variable name 'searchpath' is a single word combining 'search' and 'path'; consistent style elsewhere uses snake_case (e.g., module_path, app_cache) — 'search_path' would be consistent",
+        "app/eventyay/base/models/organizer.py: function check_access_permissions() — the name implies a read-only check but the function raises exceptions and returns warnings; a name like 'validate_team_permissions' would be more accurate",
+        "app/eventyay/api/views/version.py: function numeric_version(v) — parameter 'v' is a single letter for a non-loop variable; 'version_str' would communicate intent",
+        "app/eventyay/base/models/mixins.py: method _move() on OrderedModel is called via up() and down() wrappers, but move() is the public method — both _move() and move() exist, where _move takes up=bool and move() is the intended public API; the public method should call _move or be renamed to avoid the split",
+        "app/eventyay/common/views/cache.py: function patched_response() — 'patched' does not communicate what patch is applied; 'response_with_cache_headers' would be self-documenting",
+        "app/eventyay/base/models/base.py: method top_logentries_has_more() — 'has_more' is a boolean predicate name but the method makes a COUNT query; a name like 'has_logentries_beyond_25' or property 'logentries_overflow' would better communicate the side-effect",
+        "app/eventyay/base/models/organizer.py: class Organizer has inner class 'orga_urls' — the class name uses the abbreviation 'orga' (consistent with the codebase), but the inner class convention EventUrls in base uses the full form; inconsistent abbreviation in class names within the same file"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "naming_quality": {
+      "strengths": [
+        "Domain nouns are consistently used for model classes (Order, Event, Organizer, Submission, Review) — no generic names like Manager or Handler for domain objects",
+        "Service functions in base/services/ are named after their primary action (assign_automatically, export, shred) — intent is clear",
+        "Signal names (order_placed, order_paid, order_canceled, checkin_created) follow a consistent verb-past-tense pattern throughout base/signals.py",
+        "The mixin naming convention (FileCleanupMixin, GenerateCode, OrderedModel, TimestampedModel) clearly communicates the mixed-in capability"
+      ],
+      "issue_character": "The dominant naming issues are product-name drift from the fork merge (PretalxModel, pretix API keys) and local variable shadowing in comprehensions, rather than systemic generic-verb naming problems.",
+      "score_rationale": "This codebase scores above mediocre (50) but below adequate (70). Domain entity and signal naming is solid and consistent. The problems are concentrated in: the PretalxModel/LogMixin naming confusion inherited from the fork merge, response payload keys using the wrong product name in a public API endpoint, and local variable shadowing in utility methods. None of these are pervasive, but PretalxModel is exposed on every model in the system and the API naming mismatch is externally visible."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "naming_quality",
+      "identifier": "name_pretalx_model_name",
+      "summary": "PretalxModel is the base class name for all eventyay domain models, embedding a different product's name in every model class hierarchy",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/__init__.py"
+      ],
+      "evidence": [
+        "base/models/mixins.py: `class PretalxModel(LogMixin, TimestampedModel, FileCleanupMixin, RulesModelMixin, models.Model, ...)`",
+        "PretalxModel is exported in __all__ and used as the base for many domain models (Submission, TalkSlot, etc.)",
+        "A developer reading any model's MRO sees PretalxModel — a name from a different product (pretalx conference management)"
+      ],
+      "suggestion": "Rename PretalxModel to EventyayModel (or simply BaseModel in the eventyay.base.models namespace). Perform a codebase-wide rename with grep/sed.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name_api_version_pretix_keys",
+      "summary": "VersionView.get() returns response keys 'pretix' and 'pretix_numeric', embedding the upstream fork's product name in the public API",
+      "related_files": [
+        "app/eventyay/api/views/version.py"
+      ],
+      "evidence": [
+        "Lines 52-55: `return Response({'pretix': __version__, 'pretix_numeric': numeric_version(__version__)})`",
+        "External API clients reading the version endpoint see 'pretix' as the product identifier"
+      ],
+      "suggestion": "Rename the keys to 'eventyay' and 'eventyay_numeric'. If existing clients depend on 'pretix' keys, include both during a deprecation window.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name_geo_variable_shadowing",
+      "summary": "GeoCodeView._use_opencage() and _use_mapquest() shadow the HTTP response variable 'r' with a loop variable 'r' in comprehensions",
+      "related_files": [
+        "app/eventyay/control/views/geo.py"
+      ],
+      "evidence": [
+        "_use_opencage() line 41: `r = requests.get(...)` — r is the HTTP response",
+        "_use_opencage() line 46: `for r in d['results']` — r is reused as the loop variable, shadowing the response",
+        "_use_mapquest() has the same pattern",
+        "This is confusing when reading the comprehension: `r['formatted']` refers to a result dict, not the response object"
+      ],
+      "suggestion": "Rename the HTTP response variable to `resp` and the comprehension variable to `result` or `item` in both methods.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name_check_access_permissions_misleading",
+      "summary": "check_access_permissions() in organizer.py raises exceptions and returns warnings — the name implies a pure read-only check",
+      "related_files": [
+        "app/eventyay/base/models/organizer.py"
+      ],
+      "evidence": [
+        "Lines 38-90: function named check_access_permissions() raises Exception for unrecoverable violations and returns a warnings list for advisory issues",
+        "The verb 'check' typically implies a boolean or None return (pure predicate), not a raise-or-return-warnings pattern"
+      ],
+      "suggestion": "Rename to validate_team_permissions() to signal that it enforces constraints and may raise, similar to Django's full_clean() naming convention for validation functions.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name_logmixin_loggedmodel_ambiguity",
+      "summary": "LogMixin and LoggingMixin are two names for overlapping concepts; neither name communicates the distinction",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "base/models/mixins.py: class LogMixin — provides log_action(), log_prefix, log_parent, logged_actions()",
+        "base/models/base.py: class LoggingMixin — provides log_action(), all_logentries(), top_logentries()",
+        "Both names differ only by the '-ing' suffix; there is no obvious way to know which to choose without reading both implementations"
+      ],
+      "suggestion": "If consolidation is not immediately feasible, rename them to distinguish their roles: ActivityLogMixin (for the pretalx-style log_prefix/log_parent pattern) and LogEntryMixin (for the pretix-style content-type-based LogEntry pattern), then add docstrings explaining which to use when.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The fork merge brought PretalxModel and LoggingMixin from pretalx's naming, while LogMixin and eventyay-specific additions were added without renaming the inherited classes",
+      "The API version endpoint was cloned from pretix without updating the response key names"
+    ],
+    "likely_symptoms": [
+      "name_api_version_pretix_keys — directly observable by any API consumer"
+    ],
+    "possible_false_positives": []
+  }
+}

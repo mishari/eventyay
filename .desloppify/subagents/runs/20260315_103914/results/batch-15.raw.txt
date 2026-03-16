@@ -1,0 +1,161 @@
+{
+  "batch": "design_coherence",
+  "batch_index": 15,
+  "assessments": {"design_coherence": 55.0},
+  "dimension_notes": {
+    "design_coherence": {
+      "evidence": [
+        "app/eventyay/base/models/submission.py: 1128 lines, single file containing SubmissionStates, SubmissionManager, DeletedSubmissionManager, AllSubmissionManager, SpeakerRole, and at least the full Submission model with methods covering state transitions, URL generation, scheduling, display, favourites, and a deprecated model — multiple distinct responsibility clusters in one file",
+        "app/eventyay/base/models/event.py: 80+ imports in header, contains Event model with settings, URL generation, schedule management, plugin activation, video permissions, and billing linkage — high coupling surface; the complexity is partly domain-inherent but the TALK_HOSTNAME import and VIDEO_PERMISSION_BY_FIELD suggest feature domains leaking into the core event model",
+        "app/eventyay/base/services/chat.py: 589 lines with async DB helpers, channel layer communication, mention extraction, and membership management — mixed IO concerns (DB + channel layer) in one service module",
+        "app/eventyay/api/views/event.py: imports from 12+ distinct modules at the top; contains EventFilter (filter logic), view classes for CRUD, video permission mapping, JWT handling, and webhook notification — multiple distinct responsibilities in one file",
+        "app/eventyay/control/views/__init__.py: PaginationMixin depends on 4 undeclared self attributes (DEFAULT_PAGINATION, get_paginate_by, paginate_by, request) — the mixin implicitly contracts with Django ListView internals without declaring that contract",
+        "Mechanical signal [coupling_design] for control/views/__init__.py fingerprint a0476933ab4e8f61: confirmed — PaginationMixin's implicit host contract creates real coupling risk when composed with non-ListView bases",
+        "app/eventyay/base/exporter.py: logger imported after other stdlib imports (line 7 logger statement after line 6 import io), minor ordering issue; also contains a silent except (pass/continue) flagged by mechanical scan",
+        "app/eventyay/api/webhooks.py: WebhookEvent base class has empty __init__ (no state), then ParametrizedOrderWebhookEvent and ParametrizedEventWebhookEvent both store _action_type and _verbose_name via their own __init__ — two parallel parameterized subclasses with identical structure suggest a single generic parameterized class would be cleaner",
+        "app/eventyay/base/models/checkin.py: high cyclomatic complexity flagged (>12 decision points) — mechanical signal confirmed by file size and CheckinList with complex rules JSONField processing logic",
+        "Mechanical signals for orphaned files: api/serializers/fields.py, api/serializers/product.py, api/serializers/question.py, api/serializers/rooms.py, api/serializers/stream_schedule.py, base/cache.py, base/models/auth_token.py, base/models/cache.py, base/models/transaction.py, base/plugins.py, base/secrets.py, base/services/announcement.py, base/services/cancelevent.py, base/services/locking.py, base/services/poll.py, base/services/poster.py, base/services/pricing.py — 17 files flagged as orphaned (zero static importers). These may be loaded via dynamic imports, plugin discovery, or Django's ready() mechanism; confidence is medium that they are genuinely dead",
+        "app/eventyay/base/models/seating.py: 2x 'Too many optional params — consider a config object' flagged; the rubric says do NOT recommend config objects just for param count reduction, so this signal is a false positive",
+        "app/eventyay/api/serializers/fields.py: 72 LOC, zero importers per mechanical scan — genuinely appears orphaned; the ListMultipleChoiceField and UploadedFileField defined here would need to be used somewhere",
+        "app/eventyay/base/models/transaction.py: 29 LOC context manager rolledback_transaction — zero importers per mechanical scan; helpers/database.py contains rolledback_transaction (imported in invoices.py), suggesting a duplicate definition exists in two places",
+        "app/eventyay/base/services/invoices.py: 'Catch block that only logs (swallowed error)' — silent error swallowing at an invoice generation boundary is a meaningful design concern"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium"
+    }
+  },
+  "dimension_judgment": {
+    "design_coherence": {
+      "strengths": [
+        "Service layer is clearly separated from model layer and view layer — dependencies flow correctly in most cases",
+        "State machine logic in SubmissionStates uses declarative valid_next_states dict rather than scattered conditionals",
+        "Mixins in control/views/__init__.py correctly use super() chaining for composability",
+        "Async service functions (announcement.py, poll.py, poster.py) consistently use @database_sync_to_async uniformly"
+      ],
+      "issue_character": "The dominant design issues are file-level responsibility accumulation (submission.py at 1128 lines, event.py with 80+ imports, chat.py at 589 lines) and a large cluster of apparently orphaned files that either represent dead code or indicate the static analysis cannot reach their callers.",
+      "score_rationale": "The codebase has sound directional design (service/model/view separation, state machines as data, consistent async patterns) but suffers from responsibility accumulation in key files (submission.py, event.py, chat service) and a large population of mechanically-flagged orphaned files that at minimum indicate navigation friction and at worst represent genuinely dead code. The implicit host contract in PaginationMixin and duplicate rolledback_transaction definition are confirmed structural defects. Score of 55 reflects real design coherence at the pattern level undermined by concentrated complexity and unresolved orphan debt."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-01",
+      "summary": "PaginationMixin implicitly contracts with 4 undeclared self attributes from Django ListView",
+      "related_files": ["app/eventyay/control/views/__init__.py"],
+      "evidence": [
+        "PaginationMixin.get_paginate_by references self.request, self.paginate_by, self.DEFAULT_PAGINATION without declaring them as required by the mixin protocol",
+        "The mechanical coupling detector flagged: 'Implicit host contract: PaginationMixin depends on 4 undeclared self attrs'",
+        "This means PaginationMixin cannot be safely mixed with non-ListView bases without runtime AttributeError"
+      ],
+      "suggestion": "Add explicit protocol documentation or use typing.Protocol to declare the required interface. At minimum, add a class-level comment listing required host attrs, e.g. '# Requires host: self.request (HttpRequest), self.paginate_by (int|None)'. Alternatively, guard with getattr(self, 'paginate_by', None) to make the mixin more resilient.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "a0476933ab4e8f61"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-02",
+      "summary": "rolledback_transaction context manager duplicated in base/models/transaction.py and helpers/database.py",
+      "related_files": [
+        "app/eventyay/base/models/transaction.py",
+        "app/eventyay/helpers/database.py"
+      ],
+      "evidence": [
+        "base/models/transaction.py is 29 LOC and defines rolledback_transaction",
+        "base/services/invoices.py imports: from eventyay.helpers.database import rolledback_transaction — indicating helpers/database.py also defines it",
+        "Mechanical scan flags base/models/transaction.py as orphaned (zero static importers), consistent with duplicate definition where one copy is unused"
+      ],
+      "suggestion": "Confirm the two definitions are identical. Delete base/models/transaction.py and keep only helpers/database.rolledback_transaction. Run grep -r 'from eventyay.base.models.transaction' app/ to confirm no remaining callers.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-03",
+      "summary": "Two parallel parameterized webhook event subclasses with identical structure instead of one generic class",
+      "related_files": ["app/eventyay/api/webhooks.py"],
+      "evidence": [
+        "ParametrizedOrderWebhookEvent and ParametrizedEventWebhookEvent both: accept (action_type, verbose_name) in __init__, store them as _action_type and _verbose_name, expose them via @property — the only difference is build_payload logic",
+        "WebhookEvent base class __init__ is empty (just pass), making the two subclasses structurally identical at the init layer"
+      ],
+      "suggestion": "Merge the two parameterized classes into WebhookEvent itself: accept action_type and verbose_name as __init__ parameters and make build_payload abstract. If payload logic differs significantly between order and event webhook types, use a single ParametrizedWebhookEvent with a payload_builder callable argument, or keep two subclasses but remove the duplicate __init__/property boilerplate by defining them once in the base.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-04",
+      "summary": "base/services/invoices.py silently swallows exception in catch block at invoice generation boundary",
+      "related_files": ["app/eventyay/base/services/invoices.py"],
+      "evidence": [
+        "Mechanical scan flagged: '1x Catch block that only logs (swallowed error)' for this file",
+        "Invoice generation is a financial operation — silent swallowing of exceptions here can result in invoices not being created without any caller-visible error"
+      ],
+      "suggestion": "Identify the catch block and either re-raise the exception after logging, or return a structured error result so callers can take appropriate action. At invoice generation boundaries, prefer re-raise or explicit error propagation over silent continuation.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "5cd87902641d5b7f"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-05",
+      "summary": "api/serializers/fields.py is orphaned — 72 LOC with zero static importers",
+      "related_files": ["app/eventyay/api/serializers/fields.py"],
+      "evidence": [
+        "Mechanical scan: '[orphaned] Orphaned file (72 LOC): zero importers, not an entry point'",
+        "File defines ListMultipleChoiceField and UploadedFileField — custom serializer fields that would be used in other serializers if needed",
+        "No import found in other serializer files during direct review"
+      ],
+      "suggestion": "Search for dynamic imports: grep -r 'fields.ListMultipleChoiceField\\|fields.UploadedFileField\\|importlib.*fields' app/. If genuinely unused, delete the file. If used via a non-import mechanism (e.g., string reference in settings), document that mechanism explicitly.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "84d69b360439cc74"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-06-DISMISS",
+      "summary": "Dismiss: base/models/seating.py 'too many optional params' signal",
+      "related_files": ["app/eventyay/base/models/seating.py"],
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "d4e9bd9ef486d9f9",
+      "reasoning": "The rubric explicitly says: 'Do NOT recommend config/context objects or dependency injection wrappers just to reduce parameter count; only group when the grouping has independent semantic meaning.' The seating model parameters are domain-inherent (seat, position, zone, category) and do not have a semantically coherent grouping that would improve clarity. Dismiss."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-07-DISMISS",
+      "summary": "Dismiss: base/models/submission.py structural size signal",
+      "related_files": ["app/eventyay/base/models/submission.py"],
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "bd8b62b79f5b9008",
+      "reasoning": "1128 lines is large but the submission model is the central domain object of the conference-talk system with inherently complex state machine, multiple manager variants, speaker roles, and serialization. The complexity is domain-inherent per the rubric skip rule. The PO batch (package_organization) is a better venue for the split recommendation."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-08-DISMISS",
+      "summary": "Dismiss: base/forms/__init__.py 'save has 9 different signatures' signal",
+      "related_files": ["app/eventyay/base/forms/__init__.py"],
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "3b6d1a2dc1dbf111",
+      "reasoning": "Django's save() method is overridden across many model and form classes with intentionally varying signatures — this is standard Django pattern, not an interface design defect. The 9 variants across 59 files is expected in a large Django project."
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Platform merger without a post-merge design review pass left large accumulation files (event.py, submission.py) that grew through the merger rather than being decomposed",
+      "Mechanical orphan detector firing on 17 files likely reflects dynamic import patterns (plugin discovery via Django apps, signal receivers) that the static analyser cannot traverse — but some may be genuine dead code"
+    ],
+    "likely_symptoms": ["DC-01", "DC-02", "DC-05"],
+    "possible_false_positives": [
+      "Orphaned serializer files (api/serializers/product.py, question.py, rooms.py, stream_schedule.py) — these may be loaded by the API router via string references or plugin registration; the static orphan detector cannot follow dynamic registration"
+    ]
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "batch": "design_coherence",
+  "batch_index": 15,
+  "assessments": {
+    "design_coherence": 60.0
+  },
+  "dimension_notes": {
+    "design_coherence": {
+      "evidence": [
+        "app/eventyay/base/services/orders.py (2839 lines) is the largest service file observed; it handles order placement, payment processing, cart management, invoice generation, and email notification — multiple distinct responsibilities in a single file.",
+        "app/eventyay/base/models/event.py (3176 lines) is the largest model file; its size reflects genuine domain complexity (Event is the central aggregate), though it mixes infrastructure concerns (ICS generation, CSS regeneration, JWT issuance) with domain logic.",
+        "app/eventyay/base/models/submission.py (1128 lines) hosts both SubmissionFavouriteDeprecated and SubmissionFavouriteDeprecatedSerializer — a model file that includes a serializer class, mixing presentation-layer concerns into the model layer.",
+        "app/eventyay/api/webhooks.py uses _ALL_EVENTS = None as a module-level mutable global for lazy caching; get_all_webhook_events() mutates the global directly. The WebhookEvent.__init__ is empty (just pass), indicating a design where __init__ was never needed.",
+        "app/eventyay/base/exporter.py has `logger = logging.getLogger(__name__)` after the module docstring but before imports — import ordering inconsistency indicating the file was assembled by accretion.",
+        "app/eventyay/base/models/checkin.py (CheckinList) is well-structured: clearly-named fields, clean Meta, focused responsibilities.",
+        "app/eventyay/control/views/__init__.py PaginationMixin.has_next() swallows all exceptions with a bare `except:` — silent error suppression in a pagination utility that affects correctness.",
+        "app/eventyay/api/serializers/legacy.py (425 LOC, flagged orphaned): defines 7 serializer classes with similar structure but no shared base class beyond ModelSerializer — structural repetition.",
+        "app/eventyay/base/signals.py check_plugin_active() has mixed responsibilities: plugin resolution, exclusion list checking, compatibility checking, and core-module detection all in 50 lines with 12 decision branches."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium"
+    }
+  },
+  "dimension_judgment": {
+    "design_coherence": {
+      "strengths": [
+        "The services/ layer cleanly separates business logic from the model layer — most models are data-focused with minimal business logic.",
+        "Domain naming is consistent and expressive throughout (order, checkin, voucher, subevent).",
+        "The ExportBaseClass pattern in base/exporter.py uses a clear template-method design that consumers follow consistently.",
+        "CheckinListViewSet follows a clean DRF viewset pattern with focused, separated methods."
+      ],
+      "issue_character": "The dominant design coherence issue is file-level responsibility accumulation: the largest files mix concerns (orders.py handles payment + cart + invoices + mail; submission.py contains a serializer; event.py mixes ICS/CSS/JWT), and several utility functions have silent broad exception handlers that impair correctness.",
+      "score_rationale": "The score is below the 70 (adequate) anchor because the design coherence problems are structural: orders.py at 2839 lines spans clearly distinct subsystems (cart, payment, invoice, email) that would each warrant their own service module, and submission.py collocates a model with a serializer. These are not complexity-justified large files but files that accumulated multiple concerns over time. The codebase avoids the worst design anti-patterns (deep nesting, 15-parameter functions, data-driven patterns unexploited), which prevents a lower score."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-01",
+      "summary": "base/services/orders.py (2839 lines) mixes order-placement, payment, invoice, cart, and email notification responsibilities",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "File imports span: celery tasks, email sending (SendMailException), invoice generation (generate_invoice, generate_cancellation), cart operations (CartPosition), quota checking (QuotaAvailability), ticket secrets, and payment handling (PaymentException).",
+        "Functions include reactivate_order, cancel_order, approve_order, deny_order — each involving DB writes, email sends, invoice generation, and signal dispatch — all in one file."
+      ],
+      "suggestion": "Extract into focused service modules: orders_lifecycle.py (status transitions), orders_invoicing.py (invoice triggers), orders_email.py (notification dispatch). Keep orders.py as the primary placement/checkout entry point. Use `grep -n 'def ' app/eventyay/base/services/orders.py` to enumerate all top-level functions for assignment.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "mixed_responsibilities",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-02",
+      "summary": "SubmissionFavouriteDeprecatedSerializer lives inside base/models/submission.py — a model file hosting a serializer class",
+      "related_files": ["app/eventyay/base/models/submission.py"],
+      "evidence": [
+        "Lines 1094-1111: class SubmissionFavouriteDeprecatedSerializer(serializers.ModelSerializer) defined inside models/submission.py, importing from rest_framework.",
+        "This mixes the presentation/serialization layer into the model layer, and adds a rest_framework import to a model file."
+      ],
+      "suggestion": "Move SubmissionFavouriteDeprecatedSerializer to api/serializers/submission.py (alongside other submission serializers) or, preferably, delete it as part of the IM-01 migration cleanup.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "mixed_responsibilities",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "bd8b62b79f5b9008"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-03",
+      "summary": "PaginationMixin.has_next() uses bare except: swallowing all exceptions silently",
+      "related_files": ["app/eventyay/control/views/__init__.py"],
+      "evidence": [
+        "Lines 91-95: `def has_next(self): try: return self[self.paginator.per_page - 1] except: return False` — a bare except catches all exceptions including SystemExit and KeyboardInterrupt, masking programming errors as 'no next page'."
+      ],
+      "suggestion": "Replace with `except (IndexError, TypeError):` to only catch expected out-of-bounds access.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "design_concern",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "a0476933ab4e8f61"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-04",
+      "summary": "api/webhooks.py WebhookEvent.__init__ is empty and _ALL_EVENTS is a module-level mutable global used as a singleton cache",
+      "related_files": ["app/eventyay/api/webhooks.py"],
+      "evidence": [
+        "Lines 28-29: `class WebhookEvent: def __init__(self): pass` — empty initializer serves no purpose and adds noise.",
+        "Lines 24 and 58-72: `_ALL_EVENTS = None` module-level global mutated in get_all_webhook_events() without locking; the check `if _ALL_EVENTS:` is not thread-safe."
+      ],
+      "suggestion": "Remove the empty __init__. Convert _ALL_EVENTS to a thread-safe lazy cache using functools.lru_cache(maxsize=1) on get_all_webhook_events(), or use threading.Lock for the populate-if-None pattern.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "design_concern",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "305512126f26ba19"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-05",
+      "summary": "api/serializers/fields.py flagged as orphaned (72 LOC, zero importers) — investigation needed",
+      "related_files": ["app/eventyay/api/serializers/fields.py"],
+      "evidence": [
+        "File defines ListMultipleChoiceField and UploadedFileField — concrete, useful serializer field types.",
+        "No import of this module found via static analysis. These classes may be used dynamically or may have been superseded.",
+        "UploadedFileField uses a lazy import of CachedFile to avoid circular imports."
+      ],
+      "suggestion": "Run `grep -r 'from eventyay.api.serializers.fields import\\|api.serializers.fields' app/ --include='*.py'` to confirm zero callers. If confirmed dead, delete the file. If used dynamically, add an explicit import somewhere to make the dependency visible.",
+      "confidence": "low",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "design_concern",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "84d69b360439cc74"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-DISMISS-01",
+      "summary": "Dismissed: api/serializers/legacy.py orphaned concern",
+      "related_files": ["app/eventyay/api/serializers/legacy.py"],
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "f14ca9ecc84403c6",
+      "reasoning": "api/views/submission.py line 32-35 explicitly imports LegacySubmissionOrgaSerializer, LegacySubmissionReviewerSerializer, LegacySubmissionSerializer from this file. api/views/speaker.py also imports from it. The static orphan detector missed these callers."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-DISMISS-02",
+      "summary": "Dismissed: api/serializers/organizer.py orphaned concern",
+      "related_files": ["app/eventyay/api/serializers/organizer.py"],
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "ef259174aa6a1b54",
+      "reasoning": "Serializers in this module are likely imported by api/views/organizer.py or api/urls.py dynamically via DRF viewset registration. The zero-importers orphan signal is a false positive for DRF serializers registered through viewsets rather than direct import."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-DISMISS-03",
+      "summary": "Dismissed: base/apps.py orphaned concern",
+      "related_files": ["app/eventyay/base/apps.py"],
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "f4ef321246aeac3c",
+      "reasoning": "Django AppConfig classes are discovered via INSTALLED_APPS string reference, not import. 'eventyay.base.EventyayBaseConfig' is the default_app_config. The file is not 'orphaned' — it is the application lifecycle entry point."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-DISMISS-04",
+      "summary": "Dismissed: base/exporters/__init__.py facade concern",
+      "related_files": ["app/eventyay/base/exporters/__init__.py"],
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "7029f69c1b5406ad",
+      "reasoning": "A wildcard re-export __init__.py is a conventional Python package pattern for aggregating submodule exports. With only 1 importer it is slim but not problematic — this is intentional facade behavior."
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "orders.py and event.py grew by accretion as features were added without regular decomposition into focused modules.",
+      "The orphan detector has a systematic false-positive rate for DRF serializers and Django AppConfig files that are loaded via framework conventions rather than direct Python imports."
+    ],
+    "likely_symptoms": ["DC-01", "DC-02", "DC-03", "DC-04", "DC-05"],
+    "possible_false_positives": [
+      "DC-DISMISS-01: legacy.py orphaned — false positive, has callers via explicit import in submission view.",
+      "DC-DISMISS-02: organizer.py orphaned — likely false positive due to DRF dynamic loading.",
+      "DC-DISMISS-03: base/apps.py orphaned — false positive, Django AppConfig discovery pattern.",
+      "DC-DISMISS-04: exporters/__init__.py facade — acceptable pattern."
+    ]
+  }
+}

@@ -354,7 +354,7 @@ class TaskList(PaginationMixin, ListView):
 
         return queryset
 
-    def process_task_data(self, task):
+    def annotate_task(self, task):
         if task.last_run_at is None:
             task.formatted_last_run_at = '-'
         else:
@@ -379,7 +379,7 @@ class TaskList(PaginationMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        context['tasks'] = [self.process_task_data(task) for task in context['tasks']]
+        context['tasks'] = [self.annotate_task(task) for task in context['tasks']]
 
         context['filter_form'] = self.filter_form
         return context

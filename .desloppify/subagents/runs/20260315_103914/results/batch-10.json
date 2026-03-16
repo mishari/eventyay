@@ -1,0 +1,134 @@
+{
+  "batch": "authorization_consistency",
+  "batch_index": 10,
+  "assessments": {
+    "authorization_consistency": 58.0
+  },
+  "dimension_notes": {
+    "authorization_consistency": {
+      "evidence": [
+        "app/eventyay/control/permissions.py: EventPermissionRequiredMixin, OrganizerPermissionRequiredMixin, AdministratorPermissionRequiredMixin are the three standard class-based-view protection mixins — a consistent pattern for the control panel.",
+        "app/eventyay/control/views/admin.py: AdminDashboard, AdminEventStartpageToggle, VoucherList, VoucherCreate, VoucherUpdate, VoucherDelete, SystemConfigView, UpdateCheckView all use AdministratorPermissionRequiredMixin consistently.",
+        "app/eventyay/control/views/admin.py: AttendeeListView (line 156) extends plain ListView — NO AdministratorPermissionRequiredMixin. The view contains manual authorization (if not self.request.user.has_active_staff_session(...)) rather than using the mixin. This is an inconsistency: sibling admin views use the mixin, AttendeeListView does not.",
+        "app/eventyay/control/views/admin.py: SubmissionListView (line ~270) also extends a base class without AdministratorPermissionRequiredMixin, using inline has_active_staff_session() check — same pattern as AttendeeListView.",
+        "app/eventyay/common/views/mixins.py: ActionFromUrl._check_permission() short-circuits to True when is_admin_mode_active(request) — admin mode bypass is present but no audit log is emitted at the bypass point.",
+        "app/eventyay/orga/views/review.py: ReviewDashboard uses EventPermissionRequired with permission_required = 'base.list_review' — string literal, not a constant.",
+        "app/eventyay/control/permissions.py: event_permission_required() supports a legacy 'can_change_settings' -> 'can_change_event_settings' mapping, and organizer_permission_required() has a similar 'can_change_settings' -> 'can_change_organizer_settings' shim — permission strings are magic literals without a shared constants module.",
+        "app/eventyay/base/models/access_code.py: rules_permissions uses can_change_event_settings for all operations (list, view, create, update, delete) — no differentiation between read and write permissions for access codes.",
+        "app/eventyay/control/views/admin.py: OrganizerList.get_queryset() at line 73 uses has_active_staff_session check inline rather than mixin — filtering happens in the queryset, not at the view dispatch level, so unauthorized users still reach the view handler.",
+        "app/eventyay/control/middleware.py: Global middleware enforces authentication for the control panel consistently (lines 157, 173) — a good global gate.",
+        "app/eventyay/common/views/mixins.py: PermissionRequired and EventPermissionRequired mixins from eventyay.common correctly use the rules library (rules.contrib.views.PermissionRequiredMixin) for the talk/orga side — separate from control panel's custom mixins, creating two authorization patterns in parallel.",
+        "app/eventyay/presale/utils.py: _detect_event() checks user_can_view_tickets and require_live at the middleware layer — consistent for presale paths."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "authorization_consistency": {
+      "strengths": [
+        "Control panel admin views consistently use AdministratorPermissionRequiredMixin for the majority of views.",
+        "Global middleware in control/middleware.py provides a consistent authentication gate for all control panel routes.",
+        "The presale layer enforces live-event and ticket-visibility checks centrally in _detect_event() rather than per-view.",
+        "The talk/orga side uses the rules library (rules.contrib.views.PermissionRequiredMixin) consistently through EventPermissionRequired and PermissionRequired.",
+        "Legacy permission string shims (can_change_settings) are explicitly documented in the permission decorators."
+      ],
+      "issue_character": "The dominant pattern is inconsistent mixin application on admin views (AttendeeListView, SubmissionListView bypass AdministratorPermissionRequiredMixin and use inline queryset filtering instead), combined with permission strings as magic literals and two parallel authorization systems (custom control panel mixins vs. rules library for orga).",
+      "score_rationale": "The codebase has a recognizable authorization strategy — middleware gates, permission mixins, rules library — but enforcement is not uniformly applied. Two sibling admin views in admin.py lack the AdministratorPermissionRequiredMixin that protects their siblings, relying instead on queryset-level filtering that still allows the view to dispatch. The magic permission string literals ('base.list_review', 'can_change_settings') and the two-pattern approach (custom EventPermissionRequiredMixin for control, rules library for orga) create inconsistency that increases review burden. The admin-mode bypass in ActionFromUrl lacks audit logging. These are concrete, auditable gaps — not theoretical risks — placing the score in the upper-50s range."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "attendee_list_missing_mixin",
+      "summary": "AttendeeListView in admin.py lacks AdministratorPermissionRequiredMixin, using inline queryset filtering instead",
+      "related_files": ["app/eventyay/control/views/admin.py"],
+      "evidence": [
+        "class AttendeeListView(ListView): — no AdministratorPermissionRequiredMixin in MRO",
+        "Authorization is via: if not self.request.user.has_active_staff_session(...): allowed_organizers = ...; qs = qs.filter(...)",
+        "Sibling views AdminDashboard, AdminEventStartpageToggle, VoucherList all use AdministratorPermissionRequiredMixin at dispatch time"
+      ],
+      "suggestion": "Add AdministratorPermissionRequiredMixin to AttendeeListView's base classes so auth is enforced at dispatch rather than queryset filtering: class AttendeeListView(AdministratorPermissionRequiredMixin, PaginationMixin, ListView).",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "submission_list_missing_mixin",
+      "summary": "SubmissionListView in admin.py lacks AdministratorPermissionRequiredMixin, using inline has_active_staff_session check",
+      "related_files": ["app/eventyay/control/views/admin.py"],
+      "evidence": [
+        "SubmissionListView (line ~270) extends a base class without AdministratorPermissionRequiredMixin",
+        "if not self.request.user.has_active_staff_session(...): — inline check in get_queryset"
+      ],
+      "suggestion": "Apply AdministratorPermissionRequiredMixin to SubmissionListView consistently with sibling admin views.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "magic_permission_strings",
+      "summary": "Permission strings are magic literals scattered across views, decorators, and Meta classes without a shared constants module",
+      "related_files": [
+        "app/eventyay/control/permissions.py",
+        "app/eventyay/orga/views/review.py",
+        "app/eventyay/base/models/access_code.py"
+      ],
+      "evidence": [
+        "permission_required = 'base.list_review' in ReviewDashboard",
+        "Legacy shim: if permission == 'can_change_settings': permission = 'can_change_event_settings'",
+        "rules_permissions = {'list': can_change_event_settings, ...} in access_code model — mixes string-based and callable-based patterns"
+      ],
+      "suggestion": "Create an eventyay.core.permissions.strings (or extend the existing Permission enum) that centralizes all permission string constants. Replace magic literals in views and decorators with references to these constants.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "admin_mode_bypass_no_audit",
+      "summary": "Admin mode bypass in ActionFromUrl._check_permission() grants full permissions without audit logging",
+      "related_files": ["app/eventyay/common/views/mixins.py"],
+      "evidence": [
+        "def _check_permission(self, permission_name): if is_admin_mode_active(self.request): return True"
+      ],
+      "suggestion": "Add an audit log entry when admin mode bypass is used (e.g., call request.event.log_action or a dedicated audit function) so admin-elevated actions are traceable.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "dual_auth_systems",
+      "summary": "Control panel uses custom EventPermissionRequiredMixin; orga side uses rules library PermissionRequired — two parallel authorization patterns",
+      "related_files": [
+        "app/eventyay/control/permissions.py",
+        "app/eventyay/common/views/mixins.py"
+      ],
+      "evidence": [
+        "control/permissions.py: EventPermissionRequiredMixin uses custom event_permission_required() decorator with has_event_permission()",
+        "common/views/mixins.py: EventPermissionRequired inherits from rules.contrib.views.PermissionRequiredMixin — different auth evaluation path"
+      ],
+      "suggestion": "Align both systems to use the rules library consistently. Migrate EventPermissionRequiredMixin in control/permissions.py to extend rules.contrib.views.PermissionRequiredMixin with appropriate get_permission_object() providing the event. This unifies the two patterns and eliminates custom decorator logic.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Merger of pretix (custom mixin pattern) and pretalx (rules library pattern) brought two independently designed auth systems that were not consolidated",
+      "AttendeeListView and SubmissionListView were likely added without following the established mixin pattern, possibly as quick additions"
+    ],
+    "likely_symptoms": [
+      "magic_permission_strings — symptom of the dual auth system having no shared constants",
+      "dual_auth_systems — root cause of inconsistency across the codebase"
+    ],
+    "possible_false_positives": [
+      "access_code rules_permissions using callables — legitimate use of django-rules, not a magic string issue"
+    ]
+  }
+}

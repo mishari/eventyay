@@ -1,0 +1,105 @@
+{
+  "batch": "test_strategy",
+  "batch_index": 19,
+  "assessments": {
+    "test_strategy": 42.0
+  },
+  "dimension_notes": {
+    "test_strategy": {
+      "evidence": [
+        "stable/test_api.py contains only 7 trivial tests that check HTTP status codes (401/403/404) and nothing else — no real API behavior tested for the stable/presale subsystem",
+        "stable/test_api.py uses 'assert response.status_code in [401, 403, 404]' and 'assert response.status_code in [200, 404]' — acceptance windows so wide they would pass on broken endpoints",
+        "The talk/ subdirectory has a much richer test suite (orga views, API, schedule, CFP, submissions) — this reflects a split history where one half of the app is well-tested and the other (stable) is barely tested",
+        "No test files found for: base/services/orders.py (core order processing), base/services/cart.py (cart management), base/payment.py (payment providers), base/services/mail.py — these are the highest-risk business logic files",
+        "base/services/checkin.py has no dedicated test file in the stable/ tree; the checkin logic (rules engine, JSONLogic) is complex but untested at the unit level in this codebase",
+        "conftest.py for stable tests creates organizer, event, and authenticated_client fixtures — minimal setup for meaningful integration testing",
+        "talk/tests/ has 90+ test files organized by module (api, cfp, orga, schedule) — solid test organization for the talk subsystem",
+        "No snapshot tests found — good; the project avoids snapshot test overuse",
+        "talk/conftest.py sets up comprehensive fixtures including submission, speaker, schedule, event — these support real integration tests",
+        "stable/test_control.py and stable/test_presale.py and stable/test_common.py exist but appear similarly thin (not read in full but based on file naming and the pattern of stable/test_api.py)"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A — score below 85"
+    }
+  },
+  "dimension_judgment": {
+    "test_strategy": {
+      "strengths": [
+        "The talk/ subsystem has a well-organized, comprehensive test suite covering API, views, models, services, and schedule logic",
+        "No snapshot test overuse detected — tests focus on behavior assertions",
+        "Test fixtures in talk/conftest.py are well-structured and support realistic integration scenarios",
+        "Some cross-module testing exists in talk/ (e.g., test_cfp_flow.py, test_schedule_model.py test real workflows)"
+      ],
+      "issue_character": "The critical business-logic layer (order processing, cart management, payment providers, check-in) has near-zero dedicated test coverage in the stable/ subsystem, while the test files that do exist use acceptance windows so wide they verify almost nothing.",
+      "score_rationale": "The talk subsystem is reasonably well tested, which prevents a lower score. However, the stable subsystem's core — order placement, cart validation, payment execution, email delivery — has no unit or integration tests. stable/test_api.py's 'status_code in [401, 403, 404]' assertions would pass even if the server returns 500. This two-tier test quality, where the most financially critical paths are untested, places the overall score around 42 — below average for a production ticketing system."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-01",
+      "summary": "Core order processing (base/services/orders.py) has zero dedicated tests",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "No test file found for orders.py service layer",
+        "Functions like approve_order, deny_order, _cancel_order, _create_order, _check_positions represent the core business logic but are untested"
+      ],
+      "suggestion": "Add a tests/stable/services/test_order_service.py covering at minimum: approve_order on pending approval order, deny_order on pending order, cancel_order with and without cancellation_fee, reactivate_order when quota is available",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-02",
+      "summary": "stable/test_api.py uses status code ranges so wide they pass on broken endpoints",
+      "related_files": ["app/tests/stable/test_api.py"],
+      "evidence": [
+        "Line 15: 'assert response.status_code in [401, 403, 404]' — a 404 means the endpoint doesn't exist but the test still passes",
+        "Line 21: 'assert response.status_code in [200, 404]' — allows endpoint-not-found as a passing condition"
+      ],
+      "suggestion": "Pin expected status codes to specific values for known endpoints; use pytest.mark.skip or parametrize for environment-dependent behavior instead of accepting broken endpoints as passing",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-03",
+      "summary": "base/services/checkin.py JSONLogic rule engine (perform_checkin, SQLLogic, LazyRuleVars) has no unit tests",
+      "related_files": ["app/eventyay/base/services/checkin.py"],
+      "evidence": [
+        "No test file found for the checkin service in stable/",
+        "The rule evaluation logic (SQLLogic.apply, get_logic_environment) is complex and handles custom rules for entry/exit — errors here silently deny valid attendees"
+      ],
+      "suggestion": "Add tests for: entry allowed when no rules, entry denied by custom rule, exit always allowed, duplicate entry prevention, required questions enforcement",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-04",
+      "summary": "base/services/cart.py CartManager has no unit tests for add/remove/voucher operations",
+      "related_files": ["app/eventyay/base/services/cart.py"],
+      "evidence": [
+        "No test file found for cart service in stable/",
+        "CartManager handles quota locking, voucher validation, seat reservation — high-concurrency business logic with no test coverage"
+      ],
+      "suggestion": "Add tests covering: add product to cart, add out-of-stock product, add product with voucher, remove cart position, apply voucher to existing cart position",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The stable/ subsystem (ticketing/payment) appears to have been merged or adapted from an upstream codebase (pretix) without migrating upstream's test suite",
+      "The talk/ subsystem was developed in-house with a test-first culture; the stable/ subsystem was adapted code without corresponding test investment"
+    ],
+    "likely_symptoms": ["TS-ST-01 and TS-ST-03 represent the highest regression risk surface for production incidents"],
+    "possible_false_positives": ["Some stable tests may exist outside the app/tests/stable/ path — would need a broader glob to confirm"]
+  }
+}

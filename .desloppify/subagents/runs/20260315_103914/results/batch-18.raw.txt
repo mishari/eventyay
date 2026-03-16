@@ -1,0 +1,142 @@
+{
+  "batch": "type_safety",
+  "batch_index": 18,
+  "assessments": {
+    "type_safety": 35.0
+  },
+  "dimension_notes": {
+    "type_safety": {
+      "evidence": [
+        "Virtually all service functions in base/services/orders.py lack return type annotations: reactivate_order, extend_order, mark_order_refunded, mark_order_expired, approve_order, deny_order — these are primary public API functions",
+        "mail() in base/services/mail.py has parameter 'context: dict[str, Any] = None' — typed as dict but defaulted to None, so actual type is Optional[dict[str, Any]]; this mismatch is repeated for event, locale, order, position, etc.",
+        "base/services/cart.py CartManager.__init__ declares invoice_address: InvoiceAddress = None — same Optional mismatch pattern",
+        "Order.STATUS_REFUNDED = 'c' (orders.py line 161) is marked '# deprecated' and is identical to STATUS_CANCELED; code using raw string 'c' for status comparison bypasses the enum-style constants",
+        "base/services/orders.py _check_positions signature: positions: list[CartPosition] but can also receive a QuerySet (annotated with requires_seat) from _perform_order — runtime type diverges from annotation",
+        "base/payment.py settings_form_fields -> dict should arguably be -> OrderedDict since the docstring and usage both use OrderedDict; the weaker dict annotation is misleading",
+        "OrderChangeManager._cancel_open_payment_if_present, _check_paid_price_change, _check_quotas etc. — all critical internal methods have no return type annotations",
+        "base/models/orders.py imports 'from typing import Any, Dict, List, Union' but the file primarily uses unparameterized types (e.g., 'dict', 'list') in practice — the imports are present but underused",
+        "api/serializers/order.py CountryField.to_internal_value returns {self.field_name: Country(data)} — a dict, but no return annotation; to_representation returns str|None with no annotation",
+        "base/auth.py BaseAuthBackend.login_form_fields -> dict but implementations and callers treat it as OrderedDict consistently — annotation is too loose"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A — score below 85"
+    }
+  },
+  "dimension_judgment": {
+    "type_safety": {
+      "strengths": [
+        "base/services/cart.py imports List, Optional from typing and uses them on a few internal helpers",
+        "base/services/pricing.py and checkin.py have function-level return annotations on some helpers",
+        "WalletType enum (payment.py) is defined and used via .value lookups rather than raw string literals"
+      ],
+      "issue_character": "The dominant pattern is Optional mismatch: parameters typed as X but defaulted to None throughout service layers, meaning the declared type is always wrong. This is compounded by total absence of return type annotations on public service functions that are called throughout the API layer.",
+      "score_rationale": "This codebase has essentially no systematic type annotation discipline on its core service layer. The most-called public functions (mail, approve_order, deny_order, mark_order_expired) have no return type annotations, and multiple parameters throughout have the Optional mismatch anti-pattern (typed X, defaults to None). Even where typing imports exist, they are inconsistently applied. By the global anchor of 'annotations missing on essentially all public APIs' = low-30s, and with some partial annotation on helpers, a score of 35 is appropriate — the codebase would fail a mypy strict run on nearly every service module."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-01",
+      "summary": "mail() has multiple parameters typed as X but defaulted to None — Optional mismatch throughout",
+      "related_files": ["app/eventyay/base/services/mail.py"],
+      "evidence": [
+        "Line 74: 'context: dict[str, Any] = None' — should be Optional[dict[str, Any]]",
+        "Line 75: 'event: Event = None' — should be Optional[Event]",
+        "Line 76: 'locale: str = None' — should be Optional[str]",
+        "Line 77: 'order: Order = None' — should be Optional[Order]",
+        "Line 78: 'position: OrderPosition = None' — should be Optional[OrderPosition]"
+      ],
+      "suggestion": "Replace all 'X = None' parameter types with 'Optional[X] = None' (or 'X | None = None' in Python 3.10+ style) throughout the mail() signature",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "optional_mismatch"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-02",
+      "summary": "Core order service functions missing return type annotations entirely",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "reactivate_order: no return annotation (returns None implicitly)",
+        "approve_order: returns order.pk (int) but no '-> int' annotation",
+        "deny_order: same",
+        "mark_order_expired: returns order (Order) but no annotation",
+        "extend_order: returns None but no annotation"
+      ],
+      "suggestion": "Add return type annotations: reactivate_order -> None, approve_order -> int, deny_order -> int, mark_order_expired -> Order, extend_order -> None",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "missing_annotations"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-03",
+      "summary": "CartManager.__init__ parameter invoice_address typed as InvoiceAddress but defaults to None",
+      "related_files": ["app/eventyay/base/services/cart.py"],
+      "evidence": [
+        "Line 190: 'invoice_address: InvoiceAddress = None' — InvoiceAddress is not Optional here"
+      ],
+      "suggestion": "Change to 'invoice_address: Optional[InvoiceAddress] = None'",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "optional_mismatch"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-04",
+      "summary": "_check_positions accepts positions annotated as list[CartPosition] but receives an annotated QuerySet at runtime",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "Line 603: 'positions: list[CartPosition]'",
+        "Caller _perform_order line 1135 passes 'CartPosition.objects.annotate(requires_seat=...).filter(...)' — a QuerySet, not a list"
+      ],
+      "suggestion": "Change annotation to 'Iterable[CartPosition]' or explicitly evaluate to a list before passing; the QuerySet is evaluated inside the function with list() anyway but the annotation misleads about what is expected",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "annotation_mismatch"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-05",
+      "summary": "Order.STATUS_REFUNDED = 'c' deprecated alias creates parallel type definition risk with STATUS_CANCELED",
+      "related_files": ["app/eventyay/base/models/orders.py"],
+      "evidence": [
+        "Line 161: 'STATUS_REFUNDED = \"c\"  # deprecated' — same value as STATUS_CANCELED",
+        "Any code comparing order.status == 'c' could mean either state; the deprecated alias is still in the module namespace"
+      ],
+      "suggestion": "Remove STATUS_REFUNDED from the class or add a deprecation warning if it is still referenced, and add a linter rule preventing raw string 'c' comparisons against order.status",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "enum_bypass"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-06",
+      "summary": "CountryField and CompatibleCountryField serializers have no return type annotations on to_internal_value / to_representation",
+      "related_files": ["app/eventyay/api/serializers/order.py"],
+      "evidence": [
+        "Lines 62-77: both fields lack return annotations; to_internal_value returns a dict, to_representation returns str or None"
+      ],
+      "suggestion": "Annotate: to_internal_value -> dict[str, Country], to_representation -> str | None",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "missing_annotations"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Type annotations were added ad-hoc to some service layers (cart.py has some) but were never systematically required or enforced across the codebase",
+      "Optional mismatch pattern (X = None without Optional) is a Python 2-era habit that was never cleaned up during migration to type hints"
+    ],
+    "likely_symptoms": ["TS-04 (QuerySet passed where list expected) is a runtime behavioral difference if list-specific methods are called"],
+    "possible_false_positives": []
+  }
+}

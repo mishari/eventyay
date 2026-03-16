@@ -1,0 +1,87 @@
+{
+  "batch": "convention_outlier",
+  "batch_index": 3,
+  "assessments": {
+    "convention_outlier": 82.0
+  },
+  "dimension_notes": {
+    "convention_outlier": {
+      "evidence": [
+        "Naming is uniformly snake_case throughout all directories; naming_by_directory scan shows only 6 camelCase symbols across the entire codebase (in base/, exporters/, forms/, templatetags/, graphs/) versus thousands of snake_case entries — no systemic drift.",
+        "All view modules in agenda/views/, control/views/, orga/views/, cfp/views/ follow the same class-based view pattern using EventPermissionRequired/PermissionRequired mixins, @context + @cached_property decorators, TemplateView base — consistent across 50+ modules.",
+        "The sibling_behavior outliers flagged by the scanner are largely explained by legitimate functional differences: feed.py is a syndication Feed subclass (no TemplateView), widget.py serves static JS/CSS (no TemplateView), geo.py is a pure AJAX view, stripe.py is a bare webhook handler, oauth.py wraps oauth2_provider views.",
+        "The exporter sort-order `order` dict (13 entries, same keys/values) is defined twice: once inline in ScheduleView.exporters() in schedule.py (lines 251-266) and once identically in build_public_schedule_exporters() in utils.py (lines 155-161). Each also re-implements the sort call independently.",
+        "base/models/transaction.py lives in base/models/ but defines no Django model — it contains a single rolledback_transaction() context manager utility. All other files in base/models/ define ORM models.",
+        "base/exporters/orderlist.py and waitinglist.py inherit from ListExporter/MultiSheetListExporter (subclasses of BaseExporter); json.py inherits BaseExporter directly and skips the forms/OrderedDict/gettext_lazy pattern used by the majority. This is a mild but intentional variation reflecting simpler exporter contracts."
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium",
+      "issues_preventing_higher_score": "The duplicated exporter sort-order dict between schedule.py and utils.py is a real convention drift: a developer updating export ordering must remember to change it in two places that look functionally equivalent. The misplacement of transaction.py in base/models/ creates navigation friction — developers looking for models find a utility that doesn't belong there.",
+      "sub_axes": null
+    }
+  },
+  "dimension_judgment": {
+    "convention_outlier": {
+      "strengths": [
+        "Naming is overwhelmingly snake_case with no camelCase leakage into production function/variable names — the handful of scanner-flagged camelCase hits are confined to templatetags and isolated one-offs.",
+        "Class-based view conventions (PermissionRequired mixin, @context decorator, @cached_property, TemplateView) are applied consistently across agenda/views/, control/views/, orga/views/, and cfp/views/ — a developer can learn the pattern once and navigate confidently.",
+        "The organizer_forms/ subfolder split within control/forms/ is a good example of purposeful sub-organization: each form has its own module rather than a single sprawling forms.py.",
+        "The api/views/ functional outliers (oauth.py wrapping oauth2_provider views, stripe.py as a bare webhook, version.py as an APIView singleton) are intentional and justified by the non-CRUD nature of those endpoints — not convention drift.",
+        "The base/exporters/ variation (ListExporter vs BaseExporter direct) reflects a real hierarchy, not random inconsistency — the majority exporter siblings share the same form/field declaration pattern."
+      ],
+      "issue_character": "Issues are isolated to two specific sites: a cross-file duplication of a sort-order lookup table that creates a silent update hazard, and a single file misplaced in the wrong package directory.",
+      "score_rationale": "The codebase is broadly consistent on naming and view organization — a developer navigating agenda/views/, control/views/, or api/views/ will find patterns that hold. This places it comfortably in the 80–90 band. Two concrete convention issues prevent a higher score: the duplicated exporter `order` dict between schedule.py and utils.py means a developer updating sort order must know to change both files, and transaction.py living in base/models/ breaks the expectation that every file there defines a model. These are real navigation hazards but are localized, making the overall quality solid-but-uneven at 82."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "convention_outlier",
+      "identifier": "exporter_order_dict_duplicated",
+      "summary": "Exporter sort-order dict defined identically in two sibling modules; updating one silently diverges from the other",
+      "related_files": [
+        "app/eventyay/agenda/views/schedule.py",
+        "app/eventyay/agenda/views/utils.py"
+      ],
+      "evidence": [
+        "schedule.py ScheduleView.exporters() (lines 251-266) defines `order = {'google-calendar': 0, 'webcal': 1, 'schedule.ics': 10, ...}` with 13 entries and then calls `.sort(key=sort_key)`.",
+        "utils.py build_public_schedule_exporters() (lines 155-161) defines an almost identical `order = {'google-calendar': 0, 'webcal': 1, ...}` dict with the same 13 entries and calls `all_exporters.sort(key=lambda e: (order.get(e.identifier, 50), ...))`.",
+        "The two sort implementations also differ in how they handle unlisted exporters: schedule.py distinguishes 'my-' prefix exporters (bucket 150) while utils.py assigns them all bucket 50 — a behavioral inconsistency masked by the apparent duplication."
+      ],
+      "suggestion": "Extract a single `EXPORTER_SORT_ORDER` module-level constant (or a `get_exporter_sort_key()` function) in utils.py that both ScheduleView.exporters() and build_public_schedule_exporters() import. Decide whether the 'my-' prefix bucket-150 split in schedule.py is intentional and, if so, apply it to utils.py too.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "exporter_sort_duplication"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "transaction_utility_in_models_dir",
+      "summary": "base/models/transaction.py contains a rollback context manager, not a model — breaks the invariant that every file in base/models/ defines ORM models",
+      "related_files": [
+        "app/eventyay/base/models/transaction.py"
+      ],
+      "evidence": [
+        "transaction.py defines only `rolledback_transaction()`, a context manager that runs code inside an atomic block and rolls it back. It imports `django.db.transaction` but defines no `models.Model` subclass.",
+        "Every other file in base/models/ (announcement.py, audit.py, availability.py, base.py, bbb.py, etc.) defines one or more Django ORM models. A developer browsing base/models/ to find a model would not expect a testing/utility helper here.",
+        "The function is used in testing scenarios ('simulate the effects of a database operation that you do not actually want to perform') — a testing utility sitting in the production models package."
+      ],
+      "suggestion": "Move rolledback_transaction() to a utility module such as app/eventyay/base/utils/db.py or app/eventyay/helpers/db.py where transaction/database utilities naturally live, and update any import sites.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The exporter sort-order duplication likely arose when build_public_schedule_exporters() in utils.py was added to serve a second call-site (the video SPA) without factoring the existing inline sort logic from ScheduleView.exporters() — a copy-paste that grew stale.",
+      "transaction.py in base/models/ may have been placed there for proximity to Django's transaction module import, or during a refactor where testing helpers were not clearly separated from production models."
+    ],
+    "likely_symptoms": [
+      "exporter_order_dict_duplicated"
+    ],
+    "possible_false_positives": [
+      "The sibling_behavior scanner signals for feed.py, widget.py, geo.py, stripe.py, oauth.py missing TemplateView/viewsets/Response — these modules are intentionally different view types (Feed, APIView, bare webhook), not convention drift."
+    ]
+  }
+}

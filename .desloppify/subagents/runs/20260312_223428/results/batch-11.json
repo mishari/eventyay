@@ -1,0 +1,119 @@
+{
+  "batch": "api_surface_coherence",
+  "batch_index": 11,
+  "assessments": {
+    "api_surface_coherence": 62.0
+  },
+  "dimension_notes": {
+    "api_surface_coherence": {
+      "evidence": [
+        "LoggingMixin.log_action (base.py:44) and LogMixin.log_action (mixins.py:27) are near-duplicates with different parameter ordering: base.py orders (action, data, user, person, orga, content_object, api_token, auth, save) while mixins.py orders (action, data, user, api_token, auth, person, orga, content_object, save) — api_token/auth swap positions relative to person/orga.",
+        "BaseExporter.__init__ accepts either an Event instance or a QuerySet as its 'event' parameter with no union type annotation; the constructor branches internally and sets self.event=None when given a QuerySet, so callers have no type-safe way to know which mode they are in.",
+        "Both log_action variants have 9 parameters (> 5), but neither provides type annotations for any parameter, leaving error contracts entirely implicit.",
+        "DeprecatedSignal.connect (signals.py:241) silently discards its own arguments: it calls super().connect(receiver, sender=None, weak=True, dispatch_uid=None) with hardcoded values instead of forwarding the caller's sender, weak, and dispatch_uid.",
+        "EventPluginSignal exposes three send variants (send, send_chained, send_robust) with consistent signatures — this is a coherent trio.",
+        "check_plugin_active (signals.py:46) takes a get_plugin_list_callable parameter typed only as an implicit callable with no annotation, making the contract for callers opaque."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "api_surface_coherence": {
+      "strengths": [
+        "EventPluginSignal's three send variants (send, send_chained, send_robust) are uniformly documented, consistently parameterised, and follow a coherent trio pattern that a plugin author can predict after seeing one.",
+        "Signal module documents every public signal with docstrings that name the keyword arguments and describe the expected return value, giving callers a clear contract.",
+        "BasePaymentProvider follows a single-Event constructor shape shared with BaseExporter's single-event mode, keeping the provider plugin API consistent.",
+        "GenerateCode mixin exposes a flat, simple interface (generate_code, assign_code) with no parameter overloading.",
+        "OrderedModel.move is marked alters_data=True, which is an explicit (if Django-specific) side-effect annotation."
+      ],
+      "issue_character": "Issues are structural and repeated: two parallel log_action implementations with swapped parameter orders form the deepest defect; the BaseExporter overloaded constructor and the DeprecatedSignal argument-discarding connect are additional surface incoherencies that collectively mean a developer working across modules cannot predict API shape from one example.",
+      "score_rationale": "The signal trio and signal docstrings push quality above the 60 floor, but the dual log_action API with different parameter ordering on heavily-imported base classes (20 and 6 importers respectively) means developers working across the codebase regularly encounter inconsistent calling conventions for the most common logging operation. The BaseExporter overloaded constructor is a classic type-overloaded interface with no annotation. Combined, these defects mean a developer cannot predict API shape from one example in the core model layer — matching the 60-70 range. The signal subsystem's coherence keeps the score from falling further, landing at 62."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "log_action_param_order_mismatch",
+      "summary": "LogMixin.log_action and LoggingMixin.log_action are near-duplicates with different parameter ordering",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "base.py LoggingMixin.log_action signature (line 44): (self, action, data=None, user=None, person=None, orga=False, content_object=None, api_token=None, auth=None, save=True)",
+        "mixins.py LogMixin.log_action signature (line 27): (self, action, data=None, user=None, api_token=None, auth=None, person=None, orga=False, content_object=None, save=True)",
+        "api_token and auth appear at positions 7-8 in base.py but at positions 4-5 in mixins.py; person and orga swap correspondingly — any caller using positional args beyond the third will silently pass the wrong value.",
+        "Both implementations are imported by many modules (LoggingMixin via LoggedModel with 6 importers; LogMixin via PretalxModel with 20 importers); inconsistency is systemic."
+      ],
+      "suggestion": "Consolidate into a single log_action implementation. Pick one canonical parameter order (prefer base.py's order as it groups auth-related params together at the end), update the LogMixin to delegate to it or eliminate LogMixin entirely by migrating PretalxModel to inherit LoggedModel. If both must coexist temporarily, add type annotations and keyword-only enforcement (after action, make all params keyword-only with *) to prevent silent positional misuse.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "dual_logging_mixin_divergence"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "base_exporter_overloaded_event_param",
+      "summary": "BaseExporter.__init__ accepts Event or QuerySet for 'event', with no type annotation and silent mode switch",
+      "related_files": [
+        "app/eventyay/base/exporter.py"
+      ],
+      "evidence": [
+        "exporter.py line 38: def __init__(self, event, progress_callback=lambda v: None) — no type annotation on event.",
+        "Lines 41-46: constructor branches on isinstance(event, QuerySet) and sets self.event=None when a QuerySet is given, silently changing the object's shape.",
+        "Subclasses implementing render() and iterate_list() must internally check self.is_multievent to know which attributes are populated — callers cannot determine safe usage from the constructor signature alone."
+      ],
+      "suggestion": "Split into two explicit constructors or class methods: BaseExporter.for_event(event: Event) and BaseExporter.for_events(events: QuerySet). Alternatively, annotate event as Union[Event, QuerySet[Event]] and document the behavior explicitly with a raises clause for misuse. At minimum, add the union type annotation so type checkers can surface incorrect usage.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "deprecated_signal_discards_caller_args",
+      "summary": "DeprecatedSignal.connect ignores caller's sender, weak, and dispatch_uid arguments",
+      "related_files": [
+        "app/eventyay/base/signals.py"
+      ],
+      "evidence": [
+        "signals.py line 241-242: super().connect(receiver, sender=None, weak=True, dispatch_uid=None) hardcodes all keyword arguments rather than forwarding the parameters declared in the method signature.",
+        "A caller passing sender=my_event or dispatch_uid='my_uid' receives no error but their arguments are silently discarded — the contract implied by the signature is violated."
+      ],
+      "suggestion": "Either forward the caller's arguments (super().connect(receiver, sender=sender, weak=weak, dispatch_uid=dispatch_uid)) or explicitly document that DeprecatedSignal always connects globally by removing those parameters from the signature entirely and raising TypeError if called with non-default values.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "log_action_missing_type_annotations",
+      "summary": "Both log_action implementations have 9 public parameters with zero type annotations, hiding error contracts",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "LogMixin.log_action (mixins.py line 27): all 9 parameters are unannotated; 'auth' accepts OAuthAccessToken, OAuthApplication, TeamAPIToken, or Device as shown by the isinstance chain inside, but the signature says nothing.",
+        "LoggingMixin.log_action (base.py line 44): same situation — 'auth' and 'api_token' silently accept four distinct types with different downstream effects.",
+        "No return type annotation; the function returns None silently when self.pk is falsy, a LogEntry on success, and raises TypeError for non-dict data — three outcomes, none declared."
+      ],
+      "suggestion": "Annotate auth as Optional[Union[OAuthAccessToken, OAuthApplication, TeamAPIToken, Device]], api_token as Optional[TeamAPIToken], data as Optional[dict], and return type as Optional[LogEntry]. Add raises TypeError in the docstring for non-dict data. This is a public API called by 20+ importing modules.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "dual_logging_mixin_divergence"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The LogMixin/LoggingMixin split created a duplicated API surface that drifted in parameter ordering over time; consolidating to a single mixin would remove the largest coherence problem in this batch.",
+      "BaseExporter's constructor was extended to support multi-event use by overloading the type of an existing parameter rather than introducing a named factory method, a pattern that makes the public API ambiguous."
+    ],
+    "likely_symptoms": [
+      "log_action_missing_type_annotations is a symptom of the same root cause as log_action_param_order_mismatch."
+    ],
+    "possible_false_positives": []
+  }
+}

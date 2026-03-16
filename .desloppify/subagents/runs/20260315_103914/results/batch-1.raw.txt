@@ -1,0 +1,154 @@
+{
+  "batch": "cross_module_architecture",
+  "batch_index": 1,
+  "assessments": {
+    "cross_module_architecture": 52.0
+  },
+  "dimension_notes": {
+    "cross_module_architecture": {
+      "evidence": [
+        "base/models/mixins.py LogMixin.log_action() contains function-level imports of eventyay.api.models (OAuthAccessToken, OAuthApplication) and eventyay.api.webhooks — a downward dependency from the model layer into the API layer",
+        "base/models/base.py LoggingMixin.log_action() repeats the exact same function-level imports of eventyay.api.models and eventyay.api.webhooks, creating two near-identical cross-layer coupling points",
+        "base/models/room.py imports eventyay.api.serializers.i18n.I18nAwareModelSerializer — a model importing from the API serializer layer, which inverts the expected dependency direction",
+        "base/models/devices.py imports eventyay.api.auth.devicesecurity.DEVICE_SECURITY_PROFILES — a model depending on an API auth module",
+        "base/configurations/default_setting.py imports eventyay.api.serializers.fields and eventyay.api.serializers.i18n — configuration code depending on API serializers",
+        "base/shredder.py imports eventyay.api.serializers (order, waitinglist) for serialization — cross-layer boundary violation",
+        "base/models/auth_token.py imports eventyay.api.versions.CURRENT_VERSIONS — model depending on API versioning constants",
+        "base/signals.py docstrings still reference pretix.* and pretalx.* namespaces throughout (pretix.base.models.Event, pretix.base.payment, pretix.base.shredder, etc.) — stale namespace references across ~15 signal docstrings",
+        "default_roles() function defined identically in both base/models/event.py and base/models/world.py — duplicate logic without a shared boundary",
+        "LogMixin (mixins.py) and LoggingMixin (base.py) are parallel implementations of nearly identical log_action() methods; both exported from base/models/__init__.py without distinction",
+        "base/models/__init__.py exports 100+ symbols — a very large hub surface that every consumer imports from, creating high blast radius for any model change",
+        "control/views/__init__.py imports and re-exports ~30 admin views from admin_views.py 'to maintain backward compatibility' — a shim without documented active external consumers"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "cross_module_architecture": {
+      "strengths": [
+        "django_scopes.scope() is used consistently in middleware and key service paths, enforcing the multi-tenancy boundary at the right layer",
+        "Plugin signal dispatch (EventPluginSignal) correctly encapsulates plugin lifecycle checks in base/signals.py rather than scattering them across views",
+        "API views import from base models cleanly via the public base/models/__init__.py surface, not directly from model submodules"
+      ],
+      "issue_character": "The primary architectural issue is a repeated upward dependency from base model/mixin code into API-layer modules (serializers, webhooks, auth), handled via function-level imports as a band-aid for circular imports, rather than extracting a shared coordination layer.",
+      "score_rationale": "The codebase has a recognizable layered structure (base models → services → API → views) but it is systematically violated by base/models depending on eventyay.api via deferred imports. This is not an isolated case: it appears in LogMixin, LoggingMixin, base.py, room.py, devices.py, shredder.py, and configurations. The dual LogMixin/LoggingMixin implementations and duplicate default_roles() function further indicate missing shared abstractions. The stale pretix.* docstring namespace references signal documentation drift from runtime reality. These are systemic, codebase-wide concerns that a new engineer would struggle to explain from the layer diagram alone, warranting a score well below the 65 mid-range anchor."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-001",
+      "summary": "base/models/mixins.py and base/models/base.py both import from eventyay.api (models, webhooks) inside log_action(), inverting layer dependency",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "mixins.py line 51-52: `from eventyay.api.models import OAuthAccessToken, OAuthApplication` and `from eventyay.api.webhooks import notify_webhooks` inside log_action()",
+        "base.py lines 64-65 repeat identical imports",
+        "This creates a cycle: base models -> api models -> base models"
+      ],
+      "suggestion": "Extract a thin LoggingCoordinator protocol or use Django signals (already available in the project) to decouple the model layer from API auth types; pass auth as a pre-resolved string/enum rather than an OAuthAccessToken instance",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-002",
+      "summary": "Duplicate LogMixin and LoggingMixin implement nearly identical log_action() without differentiation or consolidation",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "mixins.py defines class LogMixin with log_action()",
+        "base.py defines class LoggingMixin with log_action() — nearly identical bodies",
+        "Both are exported from base/models/__init__.py"
+      ],
+      "suggestion": "Consolidate into a single implementation; if behavioral differences exist (LoggedModel's link-building vs. PretalxModel's prefix handling), document the split explicitly or use composition",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-003",
+      "summary": "base/models/room.py imports API serializer (I18nAwareModelSerializer), inverting model-to-API dependency",
+      "related_files": [
+        "app/eventyay/base/models/room.py"
+      ],
+      "evidence": [
+        "room.py: `from eventyay.api.serializers.i18n import I18nAwareModelSerializer` — a model module importing from API serializers"
+      ],
+      "suggestion": "Move I18nAwareModelSerializer to a shared helpers or common layer that both base and api can import from without creating a cycle",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-004",
+      "summary": "default_roles() function duplicated in both base/models/event.py and base/models/world.py",
+      "related_files": [
+        "app/eventyay/base/models/event.py",
+        "app/eventyay/base/models/world.py"
+      ],
+      "evidence": [
+        "event.py line 96: `def default_roles():`",
+        "world.py line 33: `def default_roles():` — same function name, same purpose (building permission role dicts from Permission enum)"
+      ],
+      "suggestion": "Extract default_roles() to a shared location (e.g., eventyay.core.permissions or a roles module) and import it from both models",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-005",
+      "summary": "base/signals.py docstrings contain stale pretix.* namespace references throughout, drifting from eventyay.* runtime reality",
+      "related_files": [
+        "app/eventyay/base/signals.py"
+      ],
+      "evidence": [
+        "Line 131: 'sender is required to be an instance of `pretix.base.models.Event`'",
+        "Lines 263, 271, 279, 287, 295, 303, 311, 319, 330, 337, 347: signal docstrings reference pretix.base.* subclass paths",
+        "Lines 516, 529, 557: logentry_display, logentry_object_link, requiredaction_display reference pretix.base.signals.*"
+      ],
+      "suggestion": "Do a targeted find-and-replace of pretix.* references in signal docstrings to eventyay.* equivalents",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-006",
+      "summary": "control/views/__init__.py re-exports ~30 admin views 'for backward compatibility' without documented active consumers",
+      "related_files": [
+        "app/eventyay/control/views/__init__.py"
+      ],
+      "evidence": [
+        "__init__.py lines 186-268 import and re-export all views from admin_views.py 'to maintain backward compatibility'",
+        "No external plugin or test is cited as requiring this shim"
+      ],
+      "suggestion": "Audit whether any external code actually imports from eventyay.control.views directly; if not, remove the shim and let callers import from control.views.admin_views",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The codebase is a merger of pretix + pretalx + venueless codebases; the API-into-models dependencies likely originated as a quick fix for circular imports during the merge rather than an intentional design",
+      "Absence of an explicit shared 'infrastructure' or 'ports' layer forces models to reach into the API layer for webhook/notification dispatch"
+    ],
+    "likely_symptoms": [
+      "arch-001 and arch-002 are likely root causes; arch-003 and the auth_token import are symptoms of the same missing shared layer"
+    ],
+    "possible_false_positives": [
+      "Function-level imports in log_action() are an intentional circular-import workaround (per agents.md rule 2); the architecture violation is real but the deferred-import pattern itself is permitted"
+    ]
+  }
+}

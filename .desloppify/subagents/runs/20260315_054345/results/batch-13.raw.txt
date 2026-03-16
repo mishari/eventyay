@@ -1,0 +1,121 @@
+{
+  "batch": "package_organization",
+  "batch_index": 13,
+  "assessments": {
+    "package_organization": 62.0
+  },
+  "dimension_notes": {
+    "package_organization": {
+      "evidence": [
+        "app/eventyay/base/models/ contains 60 files — well above the >10 threshold. Files span unrelated domains: access_code.py, auth.py, billing.py, chat.py, checkin.py, exhibitor.py, giftcards.py, poll.py, poster.py, roulette.py, streaming.py, turn.py. These concern separate features (chat, ticketing, streaming infrastructure, conference scheduling) all living flat under 'models'.",
+        "app/eventyay/base/services/ contains 40 files, similarly mixing unrelated service domains: bbb.py, chat.py, janus.py, turn.py (conferencing infrastructure) alongside cart.py, invoices.py, orders.py (ticketing), and poll.py, poster.py (conference features).",
+        "app/eventyay/base/models/auth_token.py defines UserApiToken — a model logically belonging to the API layer (it directly imports from eventyay.api.versions.CURRENT_VERSIONS), but lives under base/models, creating an upward import dependency from base into api.",
+        "app/eventyay/base/models/transaction.py is a 29-line utility providing rolledback_transaction() — a testing/transactional utility with zero domain model content — placed inside models/ which implies it is a Django model file.",
+        "app/eventyay/base/models/cache.py (166 LOC) contains VersionedModel and related Redis cache helpers — caching infrastructure, not a domain model — mixed into models/ alongside domain entities.",
+        "app/eventyay/base/exporters/ is an __init__.py re-exporting from 7 submodules. The exporters themselves live inside base/exporters/ which is fine, but the wildcard re-export facade means the boundary is implicit.",
+        "app/eventyay/core/ is a near-empty package (permissions.py, tasks.py, utils/) with only utils/redis.py and utils/statsd.py as real content. These infrastructure utilities could live under base/utils/ or a top-level infra/ package instead of a separate 'core' package that overlaps conceptually with 'base'.",
+        "app/eventyay/base/admin.py imports directly from app/eventyay/api/models (OAuthApplication, WebHook, etc.) — cross-package coupling from base into api at module scope."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "package_organization": {
+      "strengths": [
+        "The top-level separation into agenda, api, base, common, control, core, eventyay_common, features, helpers, orga, presale is semantically meaningful at the highest level.",
+        "The services/ layer is correctly separated from models/ — business logic does not live in model methods beyond domain-appropriate properties.",
+        "The helpers/ package groups format utilities, periodic tasks, and reporting helpers coherently."
+      ],
+      "issue_character": "The core issue is flat directory overload in base/models/ and base/services/ where 60 and 40 files respectively span multiple unrelated feature domains without subpackage boundaries, and a handful of non-model files (cache helpers, transaction utilities) are placed inside models/ by convention of location rather than by concern.",
+      "score_rationale": "The score sits below the 70 (adequate) anchor: the 60-file base/models/ flat directory is well above the >10-file threshold and mixes chat, streaming, ticketing, conference scheduling, and caching concerns without any subdirectory grouping. The auth_token.py upward import into the api package, the core/ package's thin overlap with base/, and the admin.py cross-package coupling are additional navigation penalties. The macro package structure at the top level is sound, preventing a lower score."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-01",
+      "summary": "base/models/ flat-directory overload: 60 files span 6+ unrelated feature domains with no subpackage grouping",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/base/models/chat.py",
+        "app/eventyay/base/models/checkin.py",
+        "app/eventyay/base/models/giftcards.py",
+        "app/eventyay/base/models/poll.py",
+        "app/eventyay/base/models/streaming.py"
+      ],
+      "evidence": [
+        "60 files under base/models/ covering: auth (auth.py, auth_token.py), ticketing (orders.py, invoices.py, giftcards.py, checkin.py, waitinglist.py, vouchers.py), conference (submission.py, schedule.py, slot.py, room.py, cfp.py, review.py), live infrastructure (chat.py, streaming.py, turn.py, bbb.py, janus.py, roulette.py), and shared utilities (cache.py, transaction.py).",
+        "The __init__.py is 140+ lines of flat re-exports with no grouping."
+      ],
+      "suggestion": "Stage the reorganization: (1) Create subdirectories base/models/ticketing/, base/models/conference/, base/models/live/, base/models/auth/. (2) Move files per concern — e.g., mv base/models/orders.py base/models/ticketing/. (3) Update base/models/__init__.py to import from subdirectories. (4) Run `grep -r 'from eventyay.base.models import' app/ --include='*.py'` to find callers that import specific models and verify they still resolve via __init__.py re-exports. (5) Run the full test suite to confirm no broken imports.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "flat_directory_overload"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-02",
+      "summary": "base/models/transaction.py and base/models/cache.py are infrastructure/utility files misplaced in the models/ package",
+      "related_files": [
+        "app/eventyay/base/models/transaction.py",
+        "app/eventyay/base/models/cache.py"
+      ],
+      "evidence": [
+        "transaction.py (29 LOC): contains rolledback_transaction() context manager — a testing/DB utility, not a Django model. Zero Django model subclasses.",
+        "cache.py (166 LOC): contains VersionedModel (abstract model), Redis Lua scripts, and cache helpers — infrastructure code, not a domain model."
+      ],
+      "suggestion": "Move transaction.py to app/eventyay/base/utils/db.py and cache.py to app/eventyay/base/utils/cache.py. Update imports: `grep -r 'base.models.transaction\\|base.models.cache' app/ --include='*.py'`. Run migration check since cache.py contains abstract model VersionedModel.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "flat_directory_overload"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-03",
+      "summary": "base/models/auth_token.py imports from api.versions, creating upward dependency from base into api",
+      "related_files": [
+        "app/eventyay/base/models/auth_token.py"
+      ],
+      "evidence": [
+        "Line 10: `from eventyay.api.versions import CURRENT_VERSIONS` — base package importing from api package violates the expected dependency direction (api should depend on base, not the reverse)."
+      ],
+      "suggestion": "Move the CURRENT_VERSIONS constant (or the version-check logic) into a shared location such as eventyay/base/models/api_token_utils.py or eventyay/common/versions.py that both base and api can import without circular dependency.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "import_affinity_mismatch"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-04",
+      "summary": "core/ package is a thin wrapper over two utility files that conceptually belong in base/utils/",
+      "related_files": [
+        "app/eventyay/core/utils/redis.py",
+        "app/eventyay/core/utils/statsd.py"
+      ],
+      "evidence": [
+        "app/eventyay/core/ contains only permissions.py, tasks.py, and utils/redis.py + utils/statsd.py — 4 substantive files.",
+        "The 'core' label overlaps semantically with 'base'; no other files in the project signal what differentiates 'core' from 'base'."
+      ],
+      "suggestion": "Move redis.py and statsd.py to app/eventyay/base/utils/ (creating the directory). Move permissions.py to app/eventyay/base/permissions_core.py or merge into existing control/permissions.py. Delete the core/ package. Update callers: `grep -r 'eventyay.core' app/ --include='*.py'`.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "ambiguous_folder_naming"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The base package was the initial monolith; as features were added, files accumulated in base/models/ and base/services/ without ever splitting into domain-oriented subdirectories.",
+      "Merging two upstream codebases (pretix + pretalx) introduced the core/ package as a neutral ground that was never cleaned up."
+    ],
+    "likely_symptoms": ["PO-01", "PO-02", "PO-03", "PO-04"],
+    "possible_false_positives": [
+      "base/models/submission.py is large (1128 lines) but covers a genuinely complex domain object — structural size alone is not a placement issue."
+    ]
+  }
+}

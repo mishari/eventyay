@@ -151,7 +151,7 @@ class SpeakerUpdateSerializer(SpeakerOrgaSerializer):
         if avatar:
             instance.avatar.save(Path(avatar.name).name, avatar, save=False)
             instance.save(update_fields=("avatar",))
-            instance.user.process_image("avatar", generate_thumbnail=True)
+            instance.user.schedule_image_processing("avatar", generate_thumbnail=True)
         return instance
 
     def validate_email(self, value):

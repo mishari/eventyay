@@ -496,7 +496,7 @@ class Product(LoggedModel):
             self.event.cache.clear()
 
     @property
-    def do_show_quota_left(self):
+    def show_quota_remaining(self):
         if self.show_quota_left is None:
             return self.event.settings.show_quota_left
         return self.show_quota_left

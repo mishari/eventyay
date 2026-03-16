@@ -311,7 +311,7 @@ class SubmissionOrgaSerializer(SubmissionSerializer):
         if image:
             submission.image.save(Path(image.name).name, image, save=True)
             submission.save(update_fields=("image",))
-            submission.process_image("image", generate_thumbnail=True)
+            submission.schedule_image_processing("image", generate_thumbnail=True)
         return submission
 
     def update(self, instance, validated_data):
@@ -336,7 +336,7 @@ class SubmissionOrgaSerializer(SubmissionSerializer):
             submission.tags.set(tags_data)
         if image:
             submission.image.save(Path(image.name).name, image)
-            submission.process_image("image", generate_thumbnail=True)
+            submission.schedule_image_processing("image", generate_thumbnail=True)
         if duration_changed:
             submission.update_duration()
         if slot_count_changed:

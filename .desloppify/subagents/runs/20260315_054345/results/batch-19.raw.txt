@@ -1,0 +1,130 @@
+{
+  "batch": "test_strategy",
+  "batch_index": 19,
+  "assessments": {"test_strategy": 48.0},
+  "dimension_notes": {
+    "test_strategy": {
+      "evidence": [
+        "The stable/ test directory contains only 5 test files (test_api.py, test_common.py, test_control.py, test_healthcheck.py, test_presale.py) — all are extremely thin, each testing only HTTP status codes with broad `assert response.status_code in [200, 404]` ranges; no business logic is verified",
+        "test_api.py (stable/): 47 lines covering 4 test classes with only status code assertions like `assert response.status_code in [401, 403, 404]` and `assert response.status_code in [200, 403]` — these tests cannot catch regressions in response bodies or behavior",
+        "test_common.py (stable/): Tests CSP report endpoint with `assert response.status_code in [200, 204]` — no assertion on side effects, log output, or correct handling",
+        "The talk/ test directory has coverage for orga views, cfp flow, schedule, agenda, API, person, and submission — substantially more coverage than stable/",
+        "base/services/orders.py (2700+ lines, highest-complexity file in codebase) has no direct unit tests in stable/; business logic like quota checking, order placement, order change operations are untested at the service level in stable/",
+        "base/services/checkin.py including perform_checkin (the only checkin entry point, used by API and web) has no service-level unit tests in stable/",
+        "base/payment.py (BasePaymentProvider) has no tests in stable/; payment providers are integration-tested implicitly at most",
+        "The conftest.py in stable/ creates basic organizer, event, and authenticated_client fixtures — sufficient for HTTP-level testing but the test suite doesn't use them for meaningful assertions",
+        "Talk-side tests (tests/talk/) are more substantive: test_cfp_flow.py, test_schedule_model.py, test_schedule_availability.py, test_api_submissions.py all test actual model and service logic",
+        "No snapshot tests observed — snapshot overuse is not an issue here",
+        "Missing integration tests: no test verifies the full order flow (cart -> checkout -> payment confirmation -> email dispatch -> checkin) end-to-end"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "test_strategy": {
+      "strengths": [
+        "Talk-side tests cover orga views, cfp flow, schedule availability, API endpoints, and model logic with meaningful assertions",
+        "No snapshot test overuse observed — tests use assertion-based patterns throughout",
+        "conftest.py provides reusable fixtures (organizer, event, authenticated_client) that could support meaningful tests if used",
+        "test_cfp_flow.py and schedule-related tests demonstrate integration-level testing exists for the talk subsystem"
+      ],
+      "issue_character": "The stable/ subsystem (order management, payments, checkin, cart) has essentially no meaningful unit or integration tests — only thin HTTP status code smoke tests that cannot detect behavioral regressions.",
+      "score_rationale": "The score is below mediocre (50). The highest-risk business logic in the codebase — order placement, payment processing, quota enforcement, checkin rules — is almost entirely untested in the stable/ test suite. The talk/ side is substantially better covered, but the stable/ side represents the revenue-critical path and its near-complete lack of service-level tests is a significant quality risk. The score of 48 reflects that some testing exists (talk side, healthcheck) but the most critical paths lack coverage."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "test_strategy",
+      "identifier": "ts-str-01",
+      "summary": "stable/test_api.py contains only broad HTTP status code assertions, providing no behavioral coverage",
+      "related_files": ["app/tests/stable/test_api.py"],
+      "evidence": [
+        "Line 15: `assert response.status_code in [401, 403, 404]` — three different status codes, any of which passes",
+        "Line 33: `assert response.status_code in [200, 403]` — a test that passes whether the user is permitted or denied",
+        "No assertions on response bodies, JSON structure, or side effects"
+      ],
+      "suggestion": "Replace broad status code ranges with specific assertions per scenario. Test authenticated access separately from unauthenticated access with precise expected status codes.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "ts-str-02",
+      "summary": "base/services/orders.py (2700+ lines, order placement and change logic) has no service-level unit tests in stable/",
+      "related_files": [
+        "app/eventyay/base/services/orders.py",
+        "app/tests/stable/"
+      ],
+      "evidence": [
+        "No test file in stable/ imports or references _perform_order, approve_order, deny_order, OrderChangeManager, or _check_positions",
+        "The stable/ suite has 5 thin test files; none cover service logic"
+      ],
+      "suggestion": "Add unit tests for at minimum: approve_order (valid vs already-approved), deny_order, OrderChangeManager.commit() with quota checks, and _check_positions quota/voucher expiry scenarios.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "untested_critical_path"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "ts-str-03",
+      "summary": "perform_checkin (core checkin logic with rule evaluation and quota locking) has no unit tests in stable/",
+      "related_files": [
+        "app/eventyay/base/services/checkin.py",
+        "app/tests/stable/"
+      ],
+      "evidence": [
+        "perform_checkin at line 377 handles rules, duplicate nonce suppression, forced checkin, unpaid order handling — none of these paths are tested",
+        "No stable/ test imports CheckInError, RequiredQuestionsError, or perform_checkin"
+      ],
+      "suggestion": "Add unit tests covering: successful checkin, already_redeemed error, unpaid order rejection, force=True bypass, nonce deduplication, custom rule evaluation.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "untested_critical_path"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "ts-str-04",
+      "summary": "BasePaymentProvider and payment fee calculation have no tests in stable/",
+      "related_files": [
+        "app/eventyay/base/payment.py",
+        "app/tests/stable/"
+      ],
+      "evidence": [
+        "calculate_fee with fee_reverse_calc=True/False has different formulas that could diverge on edge cases — no tests verify these paths",
+        "No test in stable/ imports BasePaymentProvider or PaymentException"
+      ],
+      "suggestion": "Add parametrized unit tests for calculate_fee with both fee_reverse_calc modes using known inputs and expected outputs.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "ts-str-05",
+      "summary": "No end-to-end integration test covers the full order lifecycle (cart to payment to checkin)",
+      "related_files": ["app/tests/stable/"],
+      "evidence": [
+        "test_presale.py exists but contains only basic HTTP smoke tests",
+        "No test chains: add_to_cart -> checkout -> payment_confirm -> email_sent -> perform_checkin"
+      ],
+      "suggestion": "Add at least one integration test per major order lifecycle path (free order, paid order with bank transfer, order cancellation with refund) using Django TestCase with test payment providers.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_integration_tests"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The stable/ (pretix-derived) codebase was merged without porting its original test suite, leaving critical business logic uncovered",
+      "The talk/ codebase (eventyay-native) has a more mature test culture, creating an asymmetry within the same repository"
+    ],
+    "likely_symptoms": ["ts-str-01"],
+    "possible_false_positives": []
+  }
+}

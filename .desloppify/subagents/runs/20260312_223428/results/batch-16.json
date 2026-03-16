@@ -1,0 +1,119 @@
+{
+  "batch": "initialization_coupling",
+  "batch_index": 16,
+  "assessments": {
+    "initialization_coupling": 77.0
+  },
+  "dimension_notes": {
+    "initialization_coupling": {
+      "evidence": [
+        "app_cache in base/signals.py is a module-level mutable dict (line 14) populated by _populate_app_cache() on first use. Multiple send() methods each guard with 'if not app_cache: _populate_app_cache()', which is a lazy-init pattern but leaves a window in multi-threaded environments where the cache may be partially filled.",
+        "_supported in base/middleware.py is a module-level variable (line 26) initialized to None and populated on first call to get_language_from_request(). Functions get_language_from_user_settings() and get_language_from_cookie() reference _supported directly without a guard; get_language_from_user_settings() will raise a TypeError if called before get_language_from_request() has run.",
+        "SERIALIZER_REGISTRY in api/versions.py is a module-level dict mutated by the @register_serializer decorator at import time. Registration happens as serializer files are imported, so lookup order depends on import order.",
+        "PAYMENT_PROVIDERS in control/forms/filter.py is a module-level list mutated inside get_all_payment_providers(). On the first call it creates a real DB event and organizer inside a rolled-back transaction to enumerate providers, then caches the result. This is a process-level singleton with DB I/O on first call; any plugin added or removed after the first call will not be reflected.",
+        "_phrase_book in common/text/phrases.py is a module-level dict mutated by PhrasesMetaClass.__new__ at class definition time. All Phrases subclasses register themselves into this dict when their containing module is imported, creating an implicit dependency on import order.",
+        "base/settings.py exports PERSON_NAME_SCHEMES as a module-level snapshot (NAME_SCHEMES.copy() at line 31). Eleven files import this constant directly. If any code ever augmented the underlying NAME_SCHEMES dict after import (e.g. from a plugin), consumers holding the copy would see a stale snapshot. Currently no such mutation happens, but there is no getter to enforce freshness.",
+        "base/apps.py lines 29-32 run 'import eventyay.celery_app as celery' at module scope (outside of ready()), not inside a try/except within ready(). If the celery import fails the entire apps module fails to load.",
+        "AppConfig.ready() in base/apps.py imports several core modules (exporter, payment, exporters, invoice, notifications, email) to trigger signal registration; this is the correct Django pattern and is not a defect.",
+        "resolve_app_for_module uses @functools.lru_cache at module level, which is safe for its use case (immutable app registry after Django startup)."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "initialization_coupling": {
+      "strengths": [
+        "Django AppConfig.ready() is used correctly in base/apps.py and api/apps.py to defer signal-registration imports until after the app registry is fully populated — no premature model access at module scope.",
+        "resolve_app_for_module in base/signals.py correctly uses @lru_cache on a pure function rather than a raw module-level dict with manual mutation, making it thread-safe after warm-up.",
+        "global_settings_object in base/settings.py is a proper lazy accessor (creates GlobalSettingsObject on first call via holder._global_settings_object), avoiding a DB hit at import time.",
+        "The celery import in agenda/apps.py is wrapped in contextlib.suppress(ImportError), so optional celery installations don't break the app.",
+        "SERIALIZER_REGISTRY is populated exclusively via the @register_serializer decorator at class-definition time, which is a predictable, declarative pattern even though it relies on import order."
+      ],
+      "issue_character": "The issues are a cluster of module-level mutable singletons that rely on implicit lazy-init or import-order sequencing: some have partial initialization hazards under concurrency (_supported, app_cache), some cache stale process-level DB state (PAYMENT_PROVIDERS), and one accumulates registrations through a metaclass side-effect (_phrase_book).",
+      "score_rationale": "The codebase avoids the worst import-time side effects (no DB connections or network calls at module scope in normal paths), and Django's AppConfig.ready() boundary is respected consistently. However, there are several recurring patterns — module-level None sentinels populated on first call, process-lifetime caches of DB-derived data, and metaclass-driven registry accumulation — that create boot-order fragility and make the code harder to test in isolation. These patterns are localized to a handful of files but affect high-traffic shared infrastructure (middleware, signals, filter forms). Anchoring against the scale, the codebase lands in the 75-80 range: solid boot discipline overall, but recurring friction from module-level mutable state in core files."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "middleware_supported_partial_init",
+      "summary": "_supported module global in base/middleware.py is None until get_language_from_request() runs, but get_language_from_user_settings() reads it unconditionally",
+      "related_files": ["app/eventyay/base/middleware.py"],
+      "evidence": [
+        "Line 26: '_supported = None' at module scope.",
+        "get_language_from_request() (line 144-145) sets _supported on first call: 'if _supported is None: _supported = OrderedDict(settings.LANGUAGES)'.",
+        "get_language_from_user_settings() (line 93-95) accesses '_supported' directly: 'if lang_code in _supported' — if called before get_language_from_request() has run, _supported is None and 'in None' raises TypeError.",
+        "In practice, LocaleMiddleware.process_request() always calls get_language_from_request() first, which calls get_language_from_user_settings() internally, so the hazard is latent. But any direct call to get_language_from_user_settings() from a test or a new code path will fail."
+      ],
+      "suggestion": "Move the _supported initialization into a standalone private function and call it from both get_language_from_request() and get_language_from_user_settings(). Alternatively, initialize _supported eagerly as 'OrderedDict(settings.LANGUAGES)' at module scope (safe because settings are finalized before middleware modules are imported under Django's normal startup).",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "lazy_global_sentinel"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "filter_payment_providers_process_cache",
+      "summary": "PAYMENT_PROVIDERS in control/forms/filter.py is a process-lifetime cache of DB-derived data, silently becoming stale after plugin changes",
+      "related_files": ["app/eventyay/control/forms/filter.py"],
+      "evidence": [
+        "Line 57: 'PAYMENT_PROVIDERS = []' at module scope.",
+        "get_all_payment_providers() (lines 60-86) performs DB I/O on the first call — creates an Event and Organizer row inside a rolled-back transaction to enumerate payment providers — then caches the list in the module global.",
+        "Line 63-64: 'if PAYMENT_PROVIDERS: return PAYMENT_PROVIDERS' — once populated the list never refreshes; a plugin added or removed while the process runs is not reflected.",
+        "The function modifies the module global with 'PAYMENT_PROVIDERS = choices' (line 85), a mutation of module-level state from inside a runtime call."
+      ],
+      "suggestion": "Remove the module-level PAYMENT_PROVIDERS list and the global mutation. Either (a) use Django's per-request cache keyed to the set of installed apps (e.g., cache.get_or_set()), so staleness is bounded, or (b) restructure the form to accept provider choices as a constructor argument rather than fetching them at form-init time. If caching is needed, use a thread-safe cache backend rather than a module global.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "mutable_process_singleton"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "signals_app_cache_unguarded_concurrent_fill",
+      "summary": "app_cache in base/signals.py is populated by a non-atomic check-then-set, creating a narrow but real concurrent-fill window",
+      "related_files": ["app/eventyay/base/signals.py"],
+      "evidence": [
+        "Line 14: 'app_cache = {}' at module scope.",
+        "_populate_app_cache() (lines 17-21) is called from send(), send_chained(), and send_robust() each guarded by 'if not app_cache: _populate_app_cache()'.",
+        "Between the truthiness check and the dict fill, a second thread could enter _populate_app_cache() and begin iterating app_configs in parallel, producing duplicate writes. While dict.update() in CPython is safe for concurrent writes of the same keys, the window where app_cache is non-empty but incompletely filled could allow resolve_app_for_module() to return incorrect results from a partially filled cache."
+      ],
+      "suggestion": "Replace the module-level dict with a threading.Lock-protected initialization or use Django's apps.app_configs directly (it is already read-only after startup) instead of maintaining a secondary copy. A simpler fix: initialize app_cache eagerly inside AppConfig.ready() where Django guarantees single-threaded execution, so the dict is fully populated before any requests arrive.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "lazy_global_sentinel"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "base_apps_module_scope_celery_import",
+      "summary": "celery import at module scope in base/apps.py runs outside of ready(), causing a bare import failure if Celery is unavailable",
+      "related_files": ["app/eventyay/base/apps.py"],
+      "evidence": [
+        "Lines 29-32 of base/apps.py: 'try: import eventyay.celery_app as celery  # NOQA except ImportError: pass' — this runs at module scope, before Django's app registry is finalized.",
+        "By contrast, agenda/apps.py wraps the same import in contextlib.suppress(ImportError) inside the class body at module scope (line 13-14), which is equivalent.",
+        "The try/except in base/apps.py is at module scope rather than inside ready(), meaning any other exception from eventyay.celery_app (e.g., a Redis connection error at import time in celery_app.py) will propagate and prevent base/apps.py from loading entirely."
+      ],
+      "suggestion": "Move the celery import inside AppConfig.ready() (alongside the existing optional celery import already there at lines 17-20), so that any failure is contained to the ready() phase and has access to the fully initialized app registry.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "lazy_global_sentinel: multiple module-level None/empty sentinels that are filled on first use, creating a call-order dependency between sibling functions in the same module.",
+      "mutable_process_singleton: module-level lists/dicts mutated at runtime to cache DB-derived data, silently becoming stale when the underlying data changes during process lifetime."
+    ],
+    "likely_symptoms": [
+      "middleware_supported_partial_init — latent failure only triggered by direct test calls to get_language_from_user_settings().",
+      "signals_app_cache_unguarded_concurrent_fill — narrow concurrency hazard unlikely to reproduce in tests."
+    ],
+    "possible_false_positives": [
+      "SERIALIZER_REGISTRY population: decorator-at-import-time is a standard Python registry pattern and the import order is fixed by the serializer file imports from known callers, so this is not a practical defect.",
+      "_phrase_book metaclass accumulation: registration through PhrasesMetaClass.__new__ is deterministic (class-body execution order), not order-sensitive across modules, and the dict is append-only after startup."
+    ]
+  }
+}

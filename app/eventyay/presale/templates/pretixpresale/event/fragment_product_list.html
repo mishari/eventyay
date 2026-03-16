@@ -98,7 +98,7 @@
                                             {{ var.description|event_localize|rich_text }}
                                         </div>
                                     {% endif %}
-                                    {% if product.do_show_quota_left %}
+                                    {% if product.show_quota_remaining %}
                                         {% include "pretixpresale/event/fragment_quota_left.html" with avail=var.cached_availability %}
                                     {% endif %}
                                 </div>
@@ -208,7 +208,7 @@
                                     {{ product.description|event_localize|rich_text }}
                                 </div>
                             {% endif %}
-                            {% if product.do_show_quota_left %}
+                            {% if product.show_quota_remaining %}
                                 {% include "pretixpresale/event/fragment_quota_left.html" with avail=product.cached_availability %}
                             {% endif %}
                             {% if product.min_per_order and product.min_per_order > 1 %}

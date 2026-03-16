@@ -59,7 +59,7 @@ def gravatar_cache(person_id: int):
 
         logger.info('set avatar for user %s to %s', user.fullname, user.avatar.url)
 
-    user.process_image('avatar', generate_thumbnail=True)
+    user.schedule_image_processing('avatar', generate_thumbnail=True)
 
 
 @receiver(periodic_task)

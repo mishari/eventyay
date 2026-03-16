@@ -1,0 +1,114 @@
+{
+  "batch": "mid_level_elegance",
+  "batch_index": 9,
+  "assessments": {
+    "mid_level_elegance": 67.0
+  },
+  "dimension_notes": {
+    "mid_level_elegance": {
+      "evidence": [
+        "base/models/__init__.py: comprehensive facade re-exporting all 100+ model classes — a clean, intentional public boundary that stabilizes import paths across all consumers.",
+        "base/services/__init__.py: empty — no service-layer facade; callers must import directly from specific service modules (base.services.orders, base.services.cart, etc.), which is honest but requires callers to know the internal layout.",
+        "base/services/announcement.py: all four functions are @database_sync_to_async wrappers that translate between async WebSocket channel code and synchronous Django ORM — the boundary is explicit and each function has a single responsibility.",
+        "base/services/auth.py: single periodic task receiver that directly queries StaffSession — minimal, bounded, no orchestration.",
+        "api/serializers/order.py: error_messages dict imported from base.services.cart — serializer layer depends on a service-layer constant, crossing a boundary in a slightly unexpected direction (serializers importing from services).",
+        "base/apps.py: ready() imports multiple modules (exporter, payment, exporters, invoice, notifications, email) for side-effect signal registration — the initialization coupling is opaque; the modules are not called, only imported to trigger @receiver decorators.",
+        "base/admin.py: imports both model module names and model instances from the same package in a single from .models import statement mixing modules (auth, base, billing) and model classes (Announcement, BBBCall) — the import style is inconsistent within a single import statement.",
+        "base/services/user.py: get_user_by_id, get_user_by_token_id, get_user_by_client_id are three near-identical lookup functions returning None on DoesNotExist — the trio is consistent but the None-return boundary contract requires every caller to check for None explicitly.",
+        "base/services/announcement.py: update_announcement uses Announcement._meta.get_fields() for dynamic field discovery — this couples the service layer to model internals (private _meta API), creating a fragile boundary.",
+        "api/serializers/order.py: CompatibleCountryField and CountryField have nearly identical to_internal_value implementations (both return {self.field_name: Country(data)}) — duplicated seam logic at the serializer boundary.",
+        "presale/utils.py: process_request signal dispatched after the entire domain resolution block — signal receivers have access to a fully configured request, which is correct, but the ordering means signal errors abort after expensive domain resolution work.",
+        "base/services/cart.py: CartManager.AddOperation namedtuple has 12 fields — at this width, a dataclass with defaults and docstrings would be more transparent as a cross-module boundary type."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "mid_level_elegance": {
+      "strengths": [
+        "base/models/__init__.py provides a clean, stable public facade for all models — downstream consumers import from a single location.",
+        "base/services/announcement.py demonstrates the correct pattern for WebSocket/Django ORM boundary: each function is @database_sync_to_async with a single named responsibility.",
+        "The API serializer layer (api/serializers/order.py) consistently uses DRF serializer classes as the data-translation boundary between HTTP and domain models.",
+        "Service modules have narrow, named public surfaces — callers import specific named functions rather than discovering them from a generic dispatcher.",
+        "presale/utils.py uses Django signals for process_request/process_response in a pluggable, ordered fashion that allows plugin extensions without direct coupling."
+      ],
+      "issue_character": "The main seam issues are opaque initialization coupling (side-effect imports in apps.ready()), a near-duplicate serializer pair at the API boundary, and a service function that uses model private _meta API for dynamic field discovery.",
+      "score_rationale": "The codebase achieves adequate inter-module boundary design in several areas (model facade, async service layer, signal-based extension) but falls short of 70 due to the apps.ready() side-effect import pattern that obscures which signal receivers are active, the _meta dynamic field coupling in update_announcement, and minor duplication at the API serializer boundary. These are not catastrophic seam failures but they represent predictable friction points when extending or debugging the service layer."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "mle-01",
+      "summary": "apps.ready() registers signal handlers via opaque side-effect imports with no explicit discovery mechanism",
+      "related_files": ["app/eventyay/base/apps.py"],
+      "evidence": [
+        "ready() imports exporter, payment, exporters, invoice, notifications, email without calling or returning anything — the imports exist solely to trigger @receiver decorators.",
+        "A developer cannot determine which signals are active without reading each imported module.",
+        "The pattern means signal registration order depends on import order with no explicit contract."
+      ],
+      "suggestion": "Document the ready() imports with a comment block listing each module and the signal it registers; or adopt an explicit registry pattern where each module exposes a connect_signals() function called from ready() with an explanatory log statement.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "mle-02",
+      "summary": "update_announcement uses Announcement._meta.get_fields() — service layer couples to model private internals for field discovery",
+      "related_files": ["app/eventyay/base/services/announcement.py"],
+      "evidence": [
+        "Lines 37-40: 'permitted_fields = {field.name for field in Announcement._meta.get_fields() if field.name not in (\"id\", \"event\")}' — the service layer reaches into the model's private _meta API to discover valid update fields.",
+        "If a relation field is added to Announcement, it will silently become settable through update_announcement without any service-layer review."
+      ],
+      "suggestion": "Define an explicit UPDATABLE_FIELDS frozenset on the Announcement model or in the service module, listing the fields that callers are allowed to update; replace _meta.get_fields() with a membership check against that set.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "mle-03",
+      "summary": "CompatibleCountryField and CountryField duplicate the same to_internal_value boundary logic",
+      "related_files": ["app/eventyay/api/serializers/order.py"],
+      "evidence": [
+        "CompatibleCountryField.to_internal_value returns '{self.field_name: Country(data)}'.",
+        "CountryField.to_internal_value returns '{self.field_name: Country(data)}' — identical implementation.",
+        "The only visible difference is in to_representation: CompatibleCountryField checks country_old fallback while CountryField returns None."
+      ],
+      "suggestion": "Extract the shared to_internal_value into a mixin or base class (BaseCountryField) and have both fields inherit from it, overriding only to_representation.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "mle-04",
+      "summary": "get_user_by_id / get_user_by_token_id / get_user_by_client_id trio returns None on DoesNotExist — implicit None contract requires every caller to guard",
+      "related_files": ["app/eventyay/base/services/user.py"],
+      "evidence": [
+        "All three functions return None on User.DoesNotExist with bare 'return' statements.",
+        "The return type is not annotated, making the None contract invisible at call sites.",
+        "get_public_user immediately checks 'if not user: return None' showing the None-propagation pattern spreading across the boundary."
+      ],
+      "suggestion": "Add Optional[User] return type annotations to make the None contract explicit; or raise a domain-specific exception (UserNotFound) and handle it at the boundary rather than propagating None across multiple call sites.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Django convention (apps.ready() for signal registration) drives the opaque initialization pattern — it is structural but the lack of documentation amplifies the opacity.",
+      "The **kwargs-based announcement service functions were designed for flexibility across WebSocket message types, which incentivized dynamic field discovery via _meta rather than explicit field lists."
+    ],
+    "likely_symptoms": [
+      "mle-03 (CompatibleCountryField/CountryField duplication) is a symptom of the API layer growing incrementally to handle legacy country_old field without refactoring the base class."
+    ],
+    "possible_false_positives": [
+      "apps.ready() side-effect import pattern is standard Django convention documented in the framework — while opaque, it is expected behavior in Django applications and may not be actionable."
+    ]
+  }
+}

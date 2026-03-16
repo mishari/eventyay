@@ -1,0 +1,178 @@
+{
+  "batch": "dependency_health",
+  "batch_index": 7,
+  "assessments": {"dependency_health": 58.0},
+  "dimension_notes": {
+    "dependency_health": {
+      "evidence": [
+        "pytz imported in 40 production files (70+ call sites) alongside stdlib zoneinfo (ZoneInfo) used in 13 files — both resolve timezone names for the same purpose; project targets Python >=3.12 where zoneinfo is complete",
+        "bleach and nh3 coexist for HTML sanitization: rich_text.py uses bleach with 6 explicit '# TODO: Remove bleach' comments; 6 other production files already use nh3 exclusively",
+        "importlib.metadata (stdlib, line 5 of settings.py) and importlib_metadata backport (line 11, used at line 369) are both imported in settings.py for plugin discovery via entry_points()",
+        "responses (HTTP mocking library) declared in [project].dependencies (production), used only in 4 test files under tests/",
+        "pycodestyle declared in [project].dependencies (production), not imported anywhere in production or test Python code",
+        "execnet declared in [project].dependencies (production), not imported anywhere in production or test Python code",
+        "pandas imported only in schedule_to_json.py to call pandas.read_excel() — openpyxl (already a declared dep) is capable of the same Excel parsing without pandas",
+        "jwcrypto declared in [project].dependencies but not imported anywhere in application Python files",
+        "cbor2 declared in [project].dependencies but not imported anywhere in application Python files",
+        "django-markup declared in [project].dependencies but not imported anywhere; its sub-libraries textile and creole are also absent from imports"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {}
+    }
+  },
+  "dimension_judgment": {
+    "dependency_health": {
+      "strengths": [
+        "Core production libraries are purposeful and justified: reportlab, pypdf, openpyxl, celery, channels, DRF, django-allauth, sentry-sdk, and the payment providers are all actively used across many files",
+        "Test and dev dependencies are correctly isolated in [dependency-groups].test and [dependency-groups].dev for the most part, keeping the intended separation visible",
+        "The migration from bleach to nh3 is already underway with explicit TODO markers and nh3 already adopted in 6 production files, showing intentional dependency reduction work in progress",
+        "No duplicate HTTP client libraries: requests is used consistently for sync HTTP calls; aiohttp is used for async contexts — clear separation of purpose"
+      ],
+      "issue_character": "The dependency set has accumulated several layers of redundancy and misplacement: two libraries serve the same timezone purpose (pytz alongside stdlib zoneinfo), two libraries serve the same HTML sanitization purpose (bleach alongside nh3), two libraries serve the same plugin-discovery purpose (importlib_metadata alongside stdlib importlib.metadata), test/linting tools leaked into production dependencies, and several declared dependencies appear to have zero import usage in the application.",
+      "score_rationale": "The codebase has a substantial number of dependency health issues spanning multiple axes: dual-library patterns for timezone and HTML sanitization, test tooling miscategorized into production deps, and multiple declared-but-unused packages. These are not isolated or minor — pytz/zoneinfo touches 40+ production files and bleach/nh3 spans the sanitization layer. At the anchor scale, 60 is 'significant drag where the developer faces conflicts, bloat, or redundancy that slows work'; this codebase sits slightly below that because the redundancies are real but non-conflicting (they don't break builds), landing at 58.0. The planned migration work (bleach→nh3) and generally purposeful core libraries prevent a lower score."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "dependency_health",
+      "identifier": "dual_timezone_pytz_zoneinfo",
+      "summary": "pytz and stdlib zoneinfo both used for timezone resolution across 40+ production files",
+      "related_files": [
+        "app/pyproject.toml",
+        "app/eventyay/control/views/dashboards.py",
+        "app/eventyay/presale/views/organizer.py",
+        "app/eventyay/features/analytics/graphs/tasks.py",
+        "app/eventyay/base/exporters/orderlist.py",
+        "app/eventyay/base/models/orders.py"
+      ],
+      "evidence": [
+        "pytz imported in 40 production files with 70+ direct call sites (pytz.timezone(), pytz.utc, etc.)",
+        "zoneinfo.ZoneInfo imported from stdlib in 13 production files",
+        "dashboards.py line 3-5: both 'from zoneinfo import ZoneInfo' and 'import pytz' present; ZoneInfo used at lines 496-503, pytz at line 597",
+        "pyproject.toml requires-python '>=3.12, <3.13', making stdlib zoneinfo fully available and pytz redundant",
+        "pyproject.toml line 167: 'pytz>=2025.2' declared as production dependency"
+      ],
+      "suggestion": "Replace all pytz.timezone(name) call sites with ZoneInfo(name) from stdlib zoneinfo, and remove the pytz dependency from pyproject.toml. Django's make_aware() and now() already accept ZoneInfo objects. The migration is mechanical: s/pytz.timezone(/ZoneInfo(/ with updated imports.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "dual_library_redundancy"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "incomplete_bleach_to_nh3_migration",
+      "summary": "bleach and nh3 coexist for HTML sanitization; bleach migration is half-done with TODO markers",
+      "related_files": [
+        "app/eventyay/base/templatetags/rich_text.py",
+        "app/eventyay/base/invoice.py",
+        "app/eventyay/control/logdisplay.py",
+        "app/eventyay/plugins/sendmail/views.py",
+        "app/eventyay/plugins/checkinlists/exporters.py",
+        "app/eventyay/orga/views/mails.py",
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "rich_text.py imports bleach, bleach.linkifier, and has 6 '# TODO: Remove bleach' / '# TODO: Implement nh3 equivalent' comments at lines 6, 9, 10, 82, 105, 122, 139, 149",
+        "6 other production files (invoice.py, logdisplay.py, sendmail/views.py, checkinlists/exporters.py, orga/views/mails.py, control/views/pages.py) already use nh3 exclusively",
+        "Both bleach>=6.3.0 and nh3>=0.3.2 declared in pyproject.toml production dependencies"
+      ],
+      "suggestion": "Complete the bleach-to-nh3 migration in rich_text.py. Replace bleach.Cleaner with nh3.clean() calls using equivalent tag/attribute allowlists, and replace bleach.Linker with a custom post-processing step or nh3's attribute callbacks. Remove bleach from pyproject.toml once rich_text.py is migrated.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "dual_library_redundancy"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dual_importlib_metadata",
+      "summary": "importlib_metadata backport and stdlib importlib.metadata both used in settings.py for plugin entry point discovery",
+      "related_files": [
+        "app/eventyay/config/settings.py",
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "settings.py line 5: 'from importlib.metadata import entry_points' (stdlib)",
+        "settings.py line 11: 'import importlib_metadata' (third-party backport)",
+        "settings.py line 369: 'eps = importlib_metadata.entry_points()' using backport",
+        "settings.py line 400: 'for entry_point in entry_points(group=...)' using stdlib import",
+        "pyproject.toml requires-python '>=3.12' — importlib.metadata is complete and stable in 3.12; backport adds no value"
+      ],
+      "suggestion": "Remove the 'import importlib_metadata' line and replace 'importlib_metadata.entry_points()' at line 369 with the already-imported stdlib 'entry_points()'. Then remove 'importlib-metadata>=8.7.1' from pyproject.toml dependencies.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "dual_library_redundancy"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "test_deps_in_production",
+      "summary": "Test-only and linting libraries (responses, pycodestyle, execnet) declared in production dependencies",
+      "related_files": [
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "pyproject.toml line 178: 'responses>=0.25.5' in [project].dependencies; responses is an HTTP mocking library imported only in 4 test files (tests/tickets/base/test_webhooks.py, tests/talk/...)",
+        "pyproject.toml line 149: 'pycodestyle>=2.12.1' in [project].dependencies; not imported anywhere in production or test Python files",
+        "pyproject.toml line 104: 'execnet>=2.1.2' in [project].dependencies; not imported anywhere — it is pytest-xdist's internal transport layer, already covered by the pytest-xdist test dep"
+      ],
+      "suggestion": "Move 'responses' to [dependency-groups].test alongside pytest and fakeredis. Remove 'pycodestyle' and 'execnet' from [project].dependencies entirely — pycodestyle is superseded by ruff (already in [dependency-groups].lint), and execnet is an indirect dep of pytest-xdist which is already in [dependency-groups].test.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "pandas_for_single_excel_read",
+      "summary": "pandas declared as production dependency but used only in one file to call read_excel()",
+      "related_files": [
+        "app/eventyay/storage/schedule_to_json.py",
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "storage/schedule_to_json.py is the only production file importing pandas",
+        "pandas is used exclusively to call pandas.read_excel() on 4 sheet names",
+        "openpyxl is already a declared production dependency (et-xmlfile is its dep) and can read Excel sheets directly without pandas",
+        "pandas is a very large dependency (~50MB wheel with numpy) brought in for a single file's Excel-reading path"
+      ],
+      "suggestion": "Replace pandas.read_excel() in schedule_to_json.py with openpyxl.load_workbook() calls to read the same sheets. This removes the pandas production dependency. The sheet-reading logic is a bounded transformation that does not require DataFrame operations.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "declared_but_unused_deps",
+      "summary": "jwcrypto, cbor2, and django-markup declared in production dependencies but never imported",
+      "related_files": [
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "jwcrypto>=1.5.6 in [project].dependencies; grep of all .py files finds no 'import jwcrypto' or 'from jwcrypto' in application or test code",
+        "cbor2>=5.8.0 in [project].dependencies; grep of all .py files finds no 'import cbor2' or 'from cbor2'",
+        "django-markup>=1.9.1 in [project].dependencies; no 'django_markup' or 'django.markup' import found anywhere; its sub-packages textile and creole also absent"
+      ],
+      "suggestion": "Audit and remove jwcrypto, cbor2, and django-markup from [project].dependencies in pyproject.toml if they are not required as indirect runtime dependencies by other listed packages. If they are transitive requirements, annotate them with a comment explaining why they are explicitly pinned.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Incremental merging of two separate applications (Pretix + Pretalx) without reconciling overlapping dependency choices, leaving duplicate timezone and HTML-sanitization libraries",
+      "Dependency list grew by accretion — packages added for specific one-off features (pandas for schedule import) or transitive deps made explicit without pruning when the use case narrowed",
+      "The planned bleach→nh3 migration stalled mid-flight: nh3 was adopted in new code but rich_text.py was never updated, leaving both libraries required"
+    ],
+    "likely_symptoms": [
+      "dual_timezone_pytz_zoneinfo",
+      "incomplete_bleach_to_nh3_migration",
+      "dual_importlib_metadata"
+    ],
+    "possible_false_positives": [
+      "cbor2 may be a hidden runtime dep of fido2 or webauthn and thus legitimately pinned even without direct imports",
+      "jwcrypto may be used by django-oauth-toolkit internally and pinned for version stability"
+    ]
+  }
+}

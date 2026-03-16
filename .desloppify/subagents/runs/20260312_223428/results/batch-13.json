@@ -1,0 +1,167 @@
+{
+  "batch": "ai_generated_debt",
+  "batch_index": 13,
+  "assessments": {"ai_generated_debt": 62.0},
+  "dimension_notes": {
+    "ai_generated_debt": {
+      "evidence": [
+        "app/eventyay/api/views/event.py lines 387-390: '# Decode and validate the JWT token' above jwt.decode(...) and '# Check if user existed' above User.objects.get(...) — both comments restate the code verbatim without adding insight.",
+        "app/eventyay/api/views/event.py lines 643-652: Four consecutive step-narrating comments inside UserFavouriteView.post that walk through each branch of an if/elif/else like a tutorial: 'If it's None, create a new dictionary with schedule.favs field', 'If client_state is not None, check if schedule field exists', 'If schedule field doesn't exist, create it', 'If schedule field exists, update the favs field'.",
+        "app/eventyay/api/views/submission.py lines 279-342: Five consecutive action methods (accept, reject, confirm, cancel, make_submitted) each with an identical try/except SubmissionError / except Exception shell that logs str(e) to a 500 response — boilerplate copied verbatim five times.",
+        "app/eventyay/api/views/event.py CreateEventView.get_payload_from_token and app/eventyay/api/views/submission.py SubmissionFavouriteDeprecatedView.get_user_from_token: near-identical JWT auth header validation logic with the same error messages character-for-character duplicated across two static methods in different view classes.",
+        "app/eventyay/api/views/event.py lines 456-474: EventThemeView.get has a 4-line docstring (@param request, @param kwargs, @return) that restates what the method name already communicates; the function body is 6 lines.",
+        "app/eventyay/api/views/event.py lines 386-393: check_token_permission is dead code — only referenced from commented-out talk_schedule_public body; defined but never called in live code.",
+        "app/eventyay/api/views/submission.py lines 584-596: SubmissionFavouriteDeprecatedView.get_user_video_token is orphaned dead code; the call site was deleted when 'Legacy video sync removed' comment was inserted.",
+        "app/eventyay/api/views/submission.py line 517: '# user_id = 52' — a leftover debug value commented out in production code."
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "The codebase has a clear cluster of AI-hallmark patterns concentrated in the api/views layer: verbatim step-narrating comments that echo the code, a five-way copy-paste of identical try/except boilerplate across submission action methods, near-identical JWT header validation logic duplicated into two separate static methods with no shared helper, and multiple pieces of dead code (check_token_permission, get_user_video_token) that were never cleaned up when their callers were removed. The restating-comment pattern in UserFavouriteView.post is the most egregious instance, with four consecutive comments that narrate if/elif/else branches as though documenting for a non-programmer reader."
+    }
+  },
+  "dimension_judgment": {
+    "ai_generated_debt": {
+      "strengths": [
+        "The core Django-native viewsets (EventViewSet, SubEventViewSet, TaxRuleViewSet) contain no restating comments or docstring bloat; their perform_create/perform_update/perform_destroy methods are direct and unnarrated.",
+        "Utility modules (consts.py, formats.py, pagination.py, versions.py) are clean — brief, purposeful comments that explain non-obvious constraints (e.g. the UNSUPPORTED_VERSIONS note, the PageNumberPagination legacy fallback TODO) rather than restating the code.",
+        "The submission ViewSet's get_queryset and get_serializer_context are well-structured with no defensive null-checks on values the framework guarantees.",
+        "The plugins module (base/plugins.py) is tight and comment-light; the few inline comments ('from eventyay-talk') explain provenance rather than mechanics."
+      ],
+      "issue_character": "The debt is concentrated in two deprecated/legacy view classes (UserFavouriteView, SubmissionFavouriteDeprecatedView, CreateEventView) and five copied submission-state action methods: step-narrating comments, verbatim boilerplate try/except repeated five times, near-duplicate JWT parsing helpers, and orphaned dead helpers from removed integrations.",
+      "score_rationale": "The codebase scores well on the non-legacy surface — viewsets, serializers, and utility modules show no AI-hallmark patterns. The score is dragged down by a concentrated cluster in the legacy-transitional code: five verbatim copies of the same try/except shell, two near-identical JWT header parsers, four step-narrating comments inside a single method, and multiple dead helpers left after integration removals. These are classic LLM-generation artifacts (copy-paste scaffolding, tutorial-style inline narration) at a scope that affects a visible public API layer, placing the codebase in the 60-65 range — worse than a clean mature project but better than one where such patterns pervade the core domain code."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_001_narrating_comments",
+      "summary": "Step-narrating if/elif/else comments in UserFavouriteView.post restate the code without adding insight",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "Lines 643-652: four consecutive comments — '# If it's None, create a new dictionary with schedule.favs field', '# If client_state is not None, check if schedule field exists', '# If schedule field doesn't exist, create it', '# If schedule field exists, update the favs field' — narrate each branch of a simple dict-merge with no added business context."
+      ],
+      "suggestion": "Remove all four comments; the conditional logic is self-evident. If the merge idiom is complex enough to warrant explanation, extract a helper function like upsert_client_state_favs(user, talk_list) whose name conveys intent.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "narrating_comments"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_002_restating_jwt_comments",
+      "summary": "check_token_permission has comments '# Decode and validate the JWT token' and '# Check if user existed' that echo the code lines beneath them",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "Line 387: '# Decode and validate the JWT token' immediately before jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])",
+        "Line 389: '# Check if user existed' immediately before User.objects.get(email=decoded_data['email'])"
+      ],
+      "suggestion": "Remove both comments; the function name and the API calls are self-documenting. Note also that check_token_permission itself is dead code (only referenced in commented-out talk_schedule_public body) and should be removed entirely.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "narrating_comments"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_003_boilerplate_action_handlers",
+      "summary": "Five SubmissionViewSet action methods share verbatim identical try/except SubmissionError / except Exception boilerplate",
+      "related_files": ["app/eventyay/api/views/submission.py"],
+      "evidence": [
+        "Methods accept (lines 280-290), reject (293-303), confirm (306-316), cancel (319-329), make_submitted (332-342) each contain the identical pattern: try { get_object(); submission.<action>(person=request.user, orga=True); return Response(SubmissionOrgaSerializer(submission).data) } except SubmissionError as e: { return 400 } except Exception as e: { return 500 } — copied character-for-character five times."
+      ],
+      "suggestion": "Extract a private helper _run_submission_action(self, request, action_name) that calls getattr(submission, action_name)(person=request.user, orga=True) and handles both exception types once; each public action method then becomes a one-liner.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "boilerplate_copy_paste"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_004_duplicate_jwt_header_parsing",
+      "summary": "Near-identical JWT bearer-header validation logic duplicated in CreateEventView.get_payload_from_token and SubmissionFavouriteDeprecatedView.get_user_from_token",
+      "related_files": [
+        "app/eventyay/api/views/event.py",
+        "app/eventyay/api/views/submission.py"
+      ],
+      "evidence": [
+        "event.py lines 588-597: auth_header split + if auth_header[0] == b'bearer' + identical 'Invalid token header. No credentials provided.' / 'Token string should not contain spaces.' messages.",
+        "submission.py lines 600-611: identical block with same error message strings, same branch structure, different exception class (AuthenticationFailedError vs AuthenticationFailed)."
+      ],
+      "suggestion": "Extract a shared utility function parse_bearer_token(request) in eventyay.api.auth or eventyay.common.auth that handles the header split and raises AuthenticationFailed; both views call that helper instead of reimplementing it.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "boilerplate_copy_paste"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_005_dead_check_token_permission",
+      "summary": "check_token_permission function is dead code — defined but only referenced in commented-out talk_schedule_public",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "Lines 386-393: function defined at module scope.",
+        "Lines 402-419: talk_schedule_public is fully commented out; no other caller exists in the codebase."
+      ],
+      "suggestion": "Delete check_token_permission; if talk_schedule_public is ever re-enabled it should use the shared JWT utility (see aid_004).",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "dead_code_orphan"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_006_dead_get_user_video_token",
+      "summary": "SubmissionFavouriteDeprecatedView.get_user_video_token is orphaned dead code left after legacy video sync was removed",
+      "related_files": ["app/eventyay/api/views/submission.py"],
+      "evidence": [
+        "Lines 584-596: static method builds and returns a JWT token.",
+        "Line 553: '# Legacy video sync removed — video app now uses the same REST API' — the call site that used this token was deleted, leaving the method with no callers."
+      ],
+      "suggestion": "Delete get_user_video_token from SubmissionFavouriteDeprecatedView; the entire deprecated view class is a candidate for removal once consumers are confirmed to use the replacement API.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "dead_code_orphan"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_007_docstring_bloat_theme_view",
+      "summary": "EventThemeView.get has a 4-line @param/@return docstring on a trivial 6-line method",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "Lines 456-461: docstring reads '@param request: request obj / @param kwargs: event_id / @return: theme data of an event' — every parameter is self-evident from the method signature and name; no business context is added."
+      ],
+      "suggestion": "Remove the docstring entirely; if the KeyError handling rationale needs explanation, add a single inline comment explaining why the key might be absent.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "docstring_bloat"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "aid_008_leftover_debug_comment",
+      "summary": "Commented-out debug literal '# user_id = 52' left in production code in SubmissionFavouriteDeprecatedView.get",
+      "related_files": ["app/eventyay/api/views/submission.py"],
+      "evidence": [
+        "Line 517: '# user_id = 52' immediately after user_id = request.user.id — a debug override value committed to the main branch."
+      ],
+      "suggestion": "Delete the comment.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "debug_leftovers"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The legacy/deprecated view classes (UserFavouriteView, SubmissionFavouriteDeprecatedView, CreateEventView) appear to have been written or substantially edited by an LLM without a cleanup pass — they exhibit narrating comments, boilerplate duplication, and orphaned helpers that accumulate during iterative AI-assisted development.",
+      "The five-way action method duplication in SubmissionViewSet suggests the methods were scaffolded by code generation rather than extracted from a shared helper; each was given its own identical try/except without noticing the pattern."
+    ],
+    "likely_symptoms": [
+      "aid_006_dead_get_user_video_token",
+      "aid_005_dead_check_token_permission"
+    ],
+    "possible_false_positives": []
+  }
+}

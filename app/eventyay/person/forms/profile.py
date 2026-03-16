@@ -208,7 +208,7 @@ class SpeakerProfileForm(
         result = super().save(**kwargs)
 
         if self.user.avatar and 'avatar' in self.changed_data:
-            self.user.process_image('avatar', generate_thumbnail=True)
+            self.user.schedule_image_processing('avatar', generate_thumbnail=True)
         for key, value in self.cleaned_data.items():
             if key.startswith('question_'):
                 self.save_questions(key, value)

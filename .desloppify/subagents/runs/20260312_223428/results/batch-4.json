@@ -1,0 +1,121 @@
+{
+  "batch": "error_consistency",
+  "batch_index": 4,
+  "assessments": {
+    "error_consistency": 68.0
+  },
+  "dimension_notes": {
+    "error_consistency": {
+      "evidence": [
+        "mail.py lines 277, 410, 458, 471, 634, 675: six bare 'except:' clauses; three swallow silently with 'pass' (attachment loops), three log then continue — suppressing SystemExit/KeyboardInterrupt along with legitimate errors",
+        "widget.py widget_script (lines 127-131): finders.find(WIDGET_PATH) can return None; widget_js_etag guards against this but widget_script passes the result directly to open() without checking, causing TypeError on missing static file",
+        "base/services/bbb.py: broad 'except Exception' in _get()/_post() returns False to callers, masking whether failure was a timeout, DNS error, XML parse error, or auth failure — callers cannot distinguish transient from permanent errors",
+        "base/services/tickets.py lines 180, 216: bare 'except: logger.exception(...)' in get_tickets_for_order continue silently, returning partial ticket list without any signal to the caller that tickets are missing",
+        "Strategy-by-directory shows views/ has 312 try_catch + 253 throws + 39 returns_null + 16 result_type — all four strategies coexist without layer-level contract",
+        "load_starred_ics_token (agenda/views/utils.py) uses precise exception list (BadSignature, KeyError, TypeError, ValueError, OSError, OverflowError) and logs at DEBUG — well-calibrated",
+        "API layer (api/views/device.py, api/views/upload.py, api/auth/permission.py) consistently raises DRF ValidationError/Http404 — clean throw-only boundary",
+        "mail_send_task retry logic (lines 484-587) is well-designed: differentiates SMTP codes, applies exponential backoff, logs to order audit trail before re-raising SendMailException",
+        "geo.py: catches only IOError from external geocoding API calls and returns graceful JSON — appropriate boundary handling",
+        "agenda/views/utils.py get_schedule_exporter_content: broad 'except Exception' on exporter.render() returns None (line 243-245), caller in ExporterView raises Http404 — functional but exporter failures are silently absorbed with no context in the 404"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "error_consistency": {
+      "strengths": [
+        "The DRF API layer (api/views/) consistently raises DRF exceptions (ValidationError, Http404, PermissionDenied) with no mixed strategies — a developer can predict API failure behavior reliably",
+        "mail_send_task retry logic is carefully designed: SMTP error codes are categorized, exponential backoff is applied, order audit log entries are written before re-raising, and SendMailException wraps network errors at the boundary",
+        "load_starred_ics_token uses a precisely scoped exception list and degrades gracefully to (None, None) with DEBUG-level logging — context is preserved and the caller contract is explicit",
+        "Geocoding view (geo.py) catches IOError only from external HTTP calls and returns a structured JSON failure response — appropriate for a best-effort network call",
+        "Django views consistently use Http404 and PermissionDenied as the error currency for permission and lookup failures — the pattern is reliable across the view layer"
+      ],
+      "issue_character": "The issues are concentrated in service-layer bare/broad exception handlers that either swallow errors silently (attachment loops in mail.py, ticket generation) or collapse all failure types into a boolean False (BBB service), combined with one unguarded I/O boundary in the widget serving path; they are not systemic across all layers but form a cluster in the services package.",
+      "score_rationale": "The codebase scores above the 60-anchor (significant drag) because the API and view layers are largely consistent. However it falls short of 80 (solid but uneven) because multiple service-layer functions use bare or broad catches that discard error context and in one case actively swallow SystemExit, making failure diagnosis unpredictable. The mixed strategies in views/ (312 try_catch + 253 throws + 39 null-returns + 16 result_type) also mean a developer cannot predict how a cross-layer failure propagates. The score of 68 reflects meaningful but subsystem-localized drag that requires per-file inspection rather than trust in a consistent pattern."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "error_consistency",
+      "identifier": "mail_bare_except_swallow",
+      "summary": "Six bare 'except:' clauses in mail.py suppress SystemExit/KeyboardInterrupt and three silently discard attachment errors",
+      "related_files": [
+        "app/eventyay/base/services/mail.py"
+      ],
+      "evidence": [
+        "Line 277: 'except:' around renderer.render() — logs then sets body_html=None, suppressing all exception types including SystemExit",
+        "Line 410: 'except: pass' inside attach-tickets loop — ticket attachment failure is silently discarded, email is sent without the expected attachment",
+        "Lines 458, 471: 'except: logger.exception(...); pass' for invoice and cached-file attachment — same silent discard pattern; caller receives no signal that attachments are missing"
+      ],
+      "suggestion": "Replace all bare 'except:' with 'except Exception as e:' to at least preserve chained exceptions and exclude SystemExit/KeyboardInterrupt. For the attachment loops, add a counter and log a warning on the email or order audit log if any attachment was skipped, so operators can detect systematic failures.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "broad_catch_service_layer"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "widget_script_unguarded_open",
+      "summary": "widget_script opens a file without checking finders.find() return value, causing TypeError crash if static asset is missing",
+      "related_files": [
+        "app/eventyay/agenda/views/widget.py"
+      ],
+      "evidence": [
+        "widget_js_etag (lines 28-35) guards against finders.find() returning None and returns 'missing'",
+        "widget_script (lines 127-131) calls 'with open(file_path, ...)' immediately after finders.find() with no None check — if the static file is absent, open(None) raises TypeError rather than Http404"
+      ],
+      "suggestion": "Add 'if not file_path: raise Http404()' immediately after 'file_path = finders.find(WIDGET_PATH)' in widget_script, matching the guard pattern already used in widget_js_etag.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "bbb_service_broad_catch_returns_false",
+      "summary": "BBB service _get()/_post() catch 'except Exception' and return False, collapsing all failure types into an undifferentiated boolean",
+      "related_files": [
+        "app/eventyay/base/services/bbb.py"
+      ],
+      "evidence": [
+        "Lines 204, 229: 'except Exception: logger.exception(...); return False' — DNS error, connection timeout, SSL error, XML parse error, and BBB API error all return the same False to callers",
+        "Line 436: another broad 'except Exception' returning False in the same file",
+        "Callers cannot distinguish transient network failures (worth retrying) from permanent configuration errors (worth alerting)"
+      ],
+      "suggestion": "Define BBBError subclasses (e.g. BBBNetworkError, BBBProtocolError) and raise the appropriate type rather than returning False. If returning a sentinel is preferred for caller simplicity, document the contract explicitly and add a separate log-level distinction (WARNING for transient, ERROR for unexpected).",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "broad_catch_service_layer"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "tickets_bare_except_partial_return",
+      "summary": "get_tickets_for_order uses bare 'except:' to silently skip ticket generation failures, returning a partial list with no caller signal",
+      "related_files": [
+        "app/eventyay/base/services/tickets.py"
+      ],
+      "evidence": [
+        "Lines 180, 216: bare 'except: logger.exception(\"Failed to generate ticket.\")' inside a loop — the function continues and returns whatever tickets succeeded",
+        "Callers (e.g. mail_send_task) proceed to attach the partial ticket list without knowing some tickets were missing — the recipient may receive an email missing expected attachments"
+      ],
+      "suggestion": "Replace bare 'except:' with 'except Exception:'. Consider returning a list of (filename, content, error) tuples or raising a PartialTicketError so callers can decide whether to proceed or abort. At minimum, log the order/position identifier alongside the exception so operators can correlate failures.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "broad_catch_service_layer"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Service layer functions (mail, bbb, tickets) were written with 'never fail the caller' intent, leading to broad/bare catches that trade observability for resilience — the pattern was applied without distinguishing between safe-to-ignore failures (attachment embellishments) and failures that change the observable outcome for the user (missing tickets)",
+      "The views/ layer accumulated error strategies organically across a long codebase history (try_catch, throw, returns_null, result_type all present), creating unpredictability for cross-module call chains"
+    ],
+    "likely_symptoms": [
+      "mail_bare_except_swallow",
+      "tickets_bare_except_partial_return"
+    ],
+    "possible_false_positives": []
+  }
+}

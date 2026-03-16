@@ -1,0 +1,185 @@
+{
+  "batch": "high_level_elegance",
+  "batch_index": 2,
+  "assessments": {
+    "high_level_elegance": 44.0
+  },
+  "dimension_notes": {
+    "high_level_elegance": {
+      "evidence": [
+        "base/models/ contains 59 files (20,420 LOC) covering tickets, orders, exhibitors, polls, BBB video rooms, streaming servers, chat, roulette, CfP, announcements, auth, billing, invoices — no domain sub-packaging; the entire application domain lives in one flat directory.",
+        "base/services/ mirrors base/models/ with 40 files (13,412 LOC) and the services/__init__.py is a 1-line empty stub — the service layer has no declared public surface at all.",
+        "base/ top-level has 30 files (9,815 LOC) including email.py, payment.py, invoice.py, pdf.py, orderimport.py, shredder.py, ticketoutput.py, timeline.py, signals.py, exporter.py — these are cross-cutting infrastructure files that are not domain-aligned, making it hard to explain what the base package 'owns'.",
+        "Both base/models/event.py and base/models/world.py define default_roles(), default_grants(), and FEATURE_FLAGS with overlapping role names (attendee, admin, moderator, speaker), duplicating the permission hierarchy across two separate domain concepts without a shared source of truth.",
+        "Two overlapping 'common' packages exist: common/ (18 files, 1,695 LOC with auth, checks, enums, exporter, language, mail, permissions, plugins, signals) and eventyay_common/ (8+ files with billing_invoice.py, navigation.py, utils.py, views/), with no documented boundary between them.",
+        "base/apps.py.ready() triggers 6 side-effect imports (exporter, payment, exporters, invoice, notifications, email) with no declared interface — a newcomer cannot tell what capabilities base provides versus what it wires at boot.",
+        "base/admin.py mixes module imports and instance imports in a single from-import: 'from .models import Announcement, AuditLog, auth, base, BBBCall, ..., page' — 'auth', 'base', 'page' are submodules while 'Announcement' is a class, creating an incoherent public import surface.",
+        "Announcement model (base/models/announcement.py) has no PretalxModel mixin, no rules_permissions, no log_prefix — inconsistent contract from sibling models like SubmitterAccessCode which carry all three, making it unclear what the 'base model' contract is.",
+        "The base/models/__init__.py re-exports 144 symbols but also exports utility functions (generate_invite_token, generate_secret, invoice_filename, cachedfile_name, itempicture_upload_to) alongside models — the public surface is not typed or scoped to a stated responsibility.",
+        "features/ subsystem (analytics, live, social, importers, integrations) correctly scopes domain capabilities under a feature namespace, demonstrating a pattern that base/ does not follow."
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "high_level_elegance": {
+      "strengths": [
+        "The services/ layer consistently mirrors the models/ layer with 1:1 domain-named files (announcement.py, auth.py, poll.py, roulette.py), making it predictable where business logic lives once a developer locates the correct domain.",
+        "The features/ sub-package (analytics, live, social, importers) correctly scopes cross-cutting capabilities under a named domain and provides a template for future capability grouping.",
+        "Plugins (badges, banktransfer, checkinlists, reports, sendmail, ticketoutputpdf) are self-contained with consistent internal structure (apps.py, signals.py, urls.py, views.py), giving plugin ownership a clean change boundary.",
+        "The talk_rules/ package cleanly separates business rules by entity (agenda, event, person, submission) and is imported consistently across models and services, providing one predictable place for permission logic.",
+        "The orga/, cfp/, schedule/, agenda/, presale/, api/ top-level packages each correspond to a recognizable user-facing capability or technical surface, giving high-level navigation predictable semantics."
+      ],
+      "issue_character": "The dominant structural problem is that base/ is a monolithic catch-all that mixes three distinct layers (models, services, and infrastructure) with no internal decomposition by domain — a new engineer cannot explain what base/ 'owns' because it owns everything from payment processing to PDF generation to video room management.",
+      "score_rationale": "At the global anchor scale (0=completely incoherent, 100=exemplary domain alignment), this codebase sits in the low-40s: the plugin and orga/cfp/agenda subsystems demonstrate disciplined top-level decomposition, but base/ — which accounts for the majority of production LOC — violates domain alignment systematically by collapsing all models, all services, and all infrastructure into one flat namespace. The dual 'common' packages, the duplicated World/Event permission hierarchy, and the empty services/__init__ all indicate that ownership boundaries were not designed and have accumulated historically. These are not local smells but structural choices that make change radius unpredictable and force every new engineer to read all 59 model files before understanding what any one of them owns."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "base_monolith_no_domain_subpackaging",
+      "summary": "base/models/ and base/services/ are unpartitioned flat directories containing all domain concepts",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/base/models/event.py",
+        "app/eventyay/base/models/world.py",
+        "app/eventyay/base/models/announcement.py",
+        "app/eventyay/base/services/__init__.py",
+        "app/eventyay/base/services/announcement.py"
+      ],
+      "evidence": [
+        "base/models/ contains 59 files spanning tickets (orders.py, product.py, giftcards.py, vouchers.py, checkin.py), video (room.py, world.py, bbb.py, janus.py, turn.py, streaming.py, chat.py, roulette.py, poll.py, poster.py), CFP (submission.py, cfp.py, review.py, slot.py, track.py, type.py), and shared infrastructure (auth.py, base.py, mixins.py) — these belong to at least four distinct domains.",
+        "base/models/__init__.py re-exports 144 symbols with no grouping or stated scope contract — any new model file is added to this namespace unconditionally.",
+        "base/services/__init__.py is an empty 1-line stub, giving the service layer no declared public surface; callers must know the full 40-file layout to use any service.",
+        "A new engineer asked to add a 'polling' feature must first scan 59 model files and 40 service files to understand change impact; there is no sub-namespace to bound the search."
+      ],
+      "suggestion": "Introduce domain sub-packages under base/models/ and base/services/ aligned to bounded contexts: e.g., ticketing/ (orders, products, vouchers, giftcards, checkin, cart), video/ (room, world, bbb, janus, turn, streaming, chat, roulette, poll, poster), cfp/ (submission, review, slot, track, type, cfp), and shared/ (auth, base, mixins, log, mail, notifications). Re-export from existing __init__.py to preserve backward compatibility. Give each sub-package its own __init__.py declaring its public surface.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_package_catchall"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "dual_default_roles_world_event",
+      "summary": "default_roles() and FEATURE_FLAGS are duplicated between base/models/event.py and base/models/world.py with divergent content",
+      "related_files": [
+        "app/eventyay/base/models/event.py",
+        "app/eventyay/base/models/world.py"
+      ],
+      "evidence": [
+        "base/models/event.py defines default_roles() returning a dict with keys attendee, viewer, participant, room_creator, room_owner, speaker, moderator, admin, apiuser, scheduleuser.",
+        "base/models/world.py defines a separate default_roles() returning the same keys plus video_stage_manager, video_channel_manager, video_direct_messaging, video_announcement_manager, video_user_viewer, video_user_moderator, video_room_manager, video_kiosk_manager, video_config_manager — 9 additional video-specific roles not present in event.py.",
+        "Both files define FEATURE_FLAGS as a list, but with different members: event.py uses 'schedule-control', 'iframe-player', 'roulette', 'muxdata', 'page.landing', 'zoom', 'janus', 'polls', 'poster', 'conftool', 'cross-origin-isolation'; world.py uses the same list.",
+        "A developer changing role definitions must update two independent functions with no shared source, creating silent divergence risk."
+      ],
+      "suggestion": "Extract a single canonical default_roles() and FEATURE_FLAGS into a shared module (e.g., base/permissions/defaults.py or core/permissions.py) and import from both Event and World. If Event and World intentionally have different role schemas, document that explicitly and give each its own named function (event_default_roles vs world_default_roles) in a shared location so the split is visible.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_package_catchall"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "dual_common_packages_without_boundary",
+      "summary": "common/ and eventyay_common/ serve overlapping responsibilities with no documented ownership boundary",
+      "related_files": [
+        "app/eventyay/common/__init__.py",
+        "app/eventyay/eventyay_common/apps.py",
+        "app/eventyay/eventyay_common/billing_invoice.py",
+        "app/eventyay/eventyay_common/navigation.py",
+        "app/eventyay/eventyay_common/utils.py"
+      ],
+      "evidence": [
+        "common/ contains auth.py, checks.py, enums.py, exporter.py, language.py, mail.py, permissions.py, plugins.py, signals.py — foundational shared utilities.",
+        "eventyay_common/ contains billing_invoice.py, navigation.py, utils.py, context.py, base_tasks.py, and a full views/ subtree (auth, event, organizer, orders, sessions, team, account/) — overlapping with what common/ also provides (auth, signals, tasks).",
+        "Both packages have apps.py AppConfig registrations, meaning two separate Django apps claim 'common' concerns with no documented boundary between them.",
+        "The naming 'eventyay_common' versus 'common' gives no navigational hint about which should be imported for a given concern — a developer adding shared auth logic cannot tell which package to use."
+      ],
+      "suggestion": "Document the intended boundary in each package's apps.py or README: common/ for framework-level shared utilities (forms, views, middleware, signals infrastructure), eventyay_common/ for product-level cross-cutting concerns (billing, navigation, event management UI). Alternatively, merge the two into a single common/ with domain-named subpackages. At minimum, ensure that eventyay_common/ does not import from common/ in a way that creates a downward dependency.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_package_catchall"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "base_infrastructure_mixed_with_domain",
+      "summary": "base/ top-level mixes infrastructure (email.py, payment.py, invoice.py, pdf.py, shredder.py) with domain-adjacent logic at the same level as models/ and services/",
+      "related_files": [
+        "app/eventyay/base/apps.py",
+        "app/eventyay/base/email.py",
+        "app/eventyay/base/payment.py",
+        "app/eventyay/base/invoice.py",
+        "app/eventyay/base/pdf.py",
+        "app/eventyay/base/shredder.py",
+        "app/eventyay/base/timeline.py",
+        "app/eventyay/base/orderimport.py"
+      ],
+      "evidence": [
+        "base/ top-level contains 30 files (9,815 LOC) in a flat layout including email.py (832 LOC, complexity 315), payment.py (1,443 LOC, complexity 253), invoice.py (965 LOC, complexity 206), pdf.py (964 LOC), orderimport.py (785 LOC), shredder.py, timeline.py, ticketoutput.py — these are independently large subsystems, not base infrastructure.",
+        "base/apps.py.ready() wires these via side-effect imports (from . import exporter, payment, exporters, invoice, notifications, email) — the capability map is encoded in boot order, not in package structure.",
+        "A newcomer reading base/__init__.py (empty) sees no declared exports; they must discover the 30-file flat layout empirically.",
+        "The structural profile shows avg_fan_in of 1.0 and avg_fan_out of 1.5 for base/ top-level — these files are independently imported by other packages, meaning they are not encapsulated within base/."
+      ],
+      "suggestion": "Promote large infrastructure files into named sub-packages: base/email/, base/payment/, base/invoicing/, base/ticketing/pdf/ — each with their own __init__.py declaring their public interface. The apps.py ready() wiring can remain but should import from these sub-package init files, making capability discovery navigable.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_package_catchall"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "base_model_contract_inconsistency",
+      "summary": "base/models/ has no consistent contract — models like Announcement omit PretalxModel, rules_permissions, and log_prefix that all peer models carry",
+      "related_files": [
+        "app/eventyay/base/models/announcement.py",
+        "app/eventyay/base/models/access_code.py",
+        "app/eventyay/base/models/information.py"
+      ],
+      "evidence": [
+        "Announcement (base/models/announcement.py) extends models.Model directly with no PretalxModel, no rules_permissions Meta, no log_prefix — it is a plain Django model with no access control or audit trail.",
+        "SubmitterAccessCode (base/models/access_code.py) extends GenerateCode and PretalxModel, carries rules_permissions with can_change_event_settings for all CRUD operations, and defines log_prefix = 'eventyay.access_code'.",
+        "SpeakerInformation (base/models/information.py) extends PretalxModel with can_view_information and can_change_event_settings rules, and EventUrls.",
+        "The absence of a clear contract for what a 'base model' must provide means developers adding new models have no template: should it be a PretalxModel? Does it need rules_permissions? The inconsistency is invisible without reading all 59 model files."
+      ],
+      "suggestion": "Document in a base/models/README or in PretalxModel's docstring what the expected contract is for models in this package (e.g., all event-scoped models must extend PretalxModel, carry rules_permissions, and define log_prefix). For models that intentionally opt out (e.g., Announcement as a simpler async-served model), add an explicit comment explaining the deviation.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_package_catchall"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "admin_incoherent_import_surface",
+      "summary": "base/admin.py imports a mix of submodule objects and class instances in the same from-import, making the public surface incoherent",
+      "related_files": [
+        "app/eventyay/base/admin.py"
+      ],
+      "evidence": [
+        "Line 5-13 of base/admin.py: 'from .models import (Announcement, AuditLog, auth, base, BBBCall, BBBServer, BillingInvoice, billing, Channel, ChatEvent, checkin, choices, Device, devices, event, ...)' — 'auth', 'base', 'billing', 'checkin', 'choices', 'devices', 'event', 'fields', 'giftcards', 'invoices', 'log', 'notifications', 'orders', 'organizer', 'page', 'poll', 'poster', 'room', 'roomquestion', 'roulette', 'seating', 'tax', 'vouchers', 'waitinglist', 'exhibitor', 'chat' are submodules; 'Announcement', 'BBBCall', 'BBBServer' are classes.",
+        "This pattern means the admin.py is bypassing the models/__init__.py public surface to access internal module namespaces directly, undermining the purpose of the facade.",
+        "The inconsistency means some models are registered as 'admin.site.register(auth.User)' while others are 'admin.site.register(Order)' — there is no single consistent style."
+      ],
+      "suggestion": "Standardize admin.py to import exclusively from the models/__init__.py public surface (e.g., 'from .models import User, U2FDevice, Order, ...') rather than mixing module and class imports. If the public surface is missing some registerable models, add them to __init__.py. This localizes the admin.py's dependency on a single stable interface.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_package_catchall"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The project was formed by merging at least two separate applications (a ticketing platform and a video/CfP platform) into a single Django app named 'base' without re-aligning the package structure to the merged domain — the base/ package is the accumulation point for all combined concepts.",
+      "No architectural gate existed to prevent new domain models and services from being added directly to base/models/ and base/services/ as flat files; the lack of a sub-packaging convention meant every new feature defaulted to the same flat layout.",
+      "The World/Event duplication of default_roles() suggests the video platform was originally a separate codebase with its own permission model and was integrated at the model level without reconciling the permission hierarchy."
+    ],
+    "likely_symptoms": [
+      "base_model_contract_inconsistency",
+      "admin_incoherent_import_surface"
+    ],
+    "possible_false_positives": []
+  }
+}

@@ -27,7 +27,7 @@ class GeoCodeView(LoginRequiredMixin, View):
                 res = self._use_mapquest(q)
             else:
                 return JsonResponse({'success': False, 'results': []}, status=200)
-        except IOError:
+        except requests.RequestException:
             logger.exception('Geocoding failed')
             return JsonResponse({'success': False, 'results': []}, status=200)
 

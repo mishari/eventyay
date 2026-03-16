@@ -1,0 +1,71 @@
+{
+  "batch": "ai_generated_debt",
+  "batch_index": 11,
+  "assessments": {"ai_generated_debt": 72.0},
+  "dimension_notes": {
+    "ai_generated_debt": {
+      "evidence": [
+        "app/eventyay/base/plugins.py lines 59-102: three helper functions (plugin_group_key, plugin_sort_key, get_all_plugins_grouped) annotated '# from eventyay-talk' — comments explain provenance, not logic; minor restating tendency",
+        "app/eventyay/base/plugins.py line 31: docstring on get_all_plugins is adequate and adds value beyond the signature",
+        "app/eventyay/api/versions.py line 18: SERIALIZER_REGISTRY = {} module-level mutable dict with a clean decorator; minimal boilerplate",
+        "app/eventyay/api/pagination.py: PageNumberPagination subclass with a well-scoped TODO comment; comment is intentional (legacy API removal note), not a restatement",
+        "app/eventyay/base/signals.py lines 24-43: resolve_app_for_module has a docstring with Args/Returns blocks on a function whose purpose is only mildly non-obvious — mild docstring bloat; however the thread-safety note adds genuine insight",
+        "app/eventyay/orga/permissions.py: a 7-line file whose only body line is rules.add_perm; the comment '# Legacy for plugins. TODO remove after v2025.1.0' is signal-rich, not bloat",
+        "app/eventyay/base/services/chat.py: extract_mentioned_user_ids has a docstring explaining the regex approach; the function is short but the regex warrants explanation — acceptable",
+        "app/eventyay/api/views/event.py: _extract_bearer_token docstring ('Parse and validate…Returns the raw token bytes on success. Raises AuthenticationFailed when the header is missing or malformed.') closely restates the function signature and exception list already visible in code — mild docstring echo",
+        "app/eventyay/base/services/orders.py: error_messages dict at module level uses gettext_lazy with meaningful domain terms — good",
+        "No evidence of entry/exit debug logging, full object dumps, or wholesale copied error-handling boilerplate across files",
+        "app/eventyay/base/plugins.py lines 108-115: PluginConfig.__init__ references 'PRETIX_IGNORE_CONFLICTS' env var and 'pretix plugin' — residual naming from legacy codebase rather than AI debt"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "ai_generated_debt": {
+      "strengths": [
+        "Domain-specific naming is used throughout: OrderChangeManager, QuotaAvailability, LockTimeoutException — no generic handleData/processItem anti-patterns found",
+        "Error messages use domain vocabulary and lazy translation, not copy-pasted boilerplate",
+        "Pagination, locking, and serializer code are meaningfully layered — wrappers add auth, scoping, or version negotiation, not pure pass-throughs",
+        "Signal infrastructure uses named types (DeprecatedSignal, ChainedSignal) rather than generic wrappers",
+        "TODO comments are targeted ('remove after v2025.1.0', 'remove once legacy API is removed') rather than vague placeholders"
+      ],
+      "issue_character": "Occasional mild docstring echo on boundary functions (e.g., _extract_bearer_token) and comment provenance labels ('# from eventyay-talk') that add noise without insight, but no systemic AI-hallmark patterns.",
+      "score_rationale": "The codebase shows strong domain naming, purposeful wrappers, and targeted TODOs — all hallmarks of human-authored, domain-aware code. The few mild issues (docstring echo on one API helper, source attribution comments in plugins.py) are cosmetic and local. No systemic LLM hallmark patterns such as entry/exit logging, object dumps, or boilerplate error handling across files were found. Score sits in the 70-75 range: clearly above average but with a handful of fixable cosmetic issues."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "AGD-01",
+      "summary": "_extract_bearer_token docstring echoes the function signature without adding domain insight",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "Docstring says 'Parse and validate the Authorization: Bearer <token> header. Returns the raw token bytes on success. Raises AuthenticationFailed when the header is missing or malformed.' — all of this is derivable directly from the function signature and three explicit raise statements in the 14-line body"
+      ],
+      "suggestion": "Trim the docstring to a single sentence describing why this helper exists separately from DRF's default auth flow, e.g. 'Extracts the bearer token before session authentication runs, for endpoints that accept anonymous + token traffic.'",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "AGD-02",
+      "summary": "Provenance comments ('# from eventyay-talk') label origin but add no executable or design insight",
+      "related_files": ["app/eventyay/base/plugins.py"],
+      "evidence": [
+        "Lines 59, 71, 81: three consecutive '# from eventyay-talk' markers before each helper function; these repeat three times without explaining usage constraints, planned consolidation, or migration status"
+      ],
+      "suggestion": "Remove the provenance comments or replace with a single module-level note referencing the migration ticket, e.g. '# Functions below were ported from eventyay-talk; see #ISSUE for consolidation plan'",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": ["Legacy platform merge (eventyay-talk + pretix) brought commentary conventions from two codebases that were not harmonised"],
+    "likely_symptoms": ["AGD-02"],
+    "possible_false_positives": []
+  }
+}

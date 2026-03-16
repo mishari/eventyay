@@ -1,0 +1,153 @@
+{
+  "batch": "naming_quality",
+  "batch_index": 5,
+  "assessments": {"naming_quality": 78.0},
+  "dimension_notes": {
+    "naming_quality": {
+      "evidence": [
+        "Domain vocabulary is used well throughout: ScheduleFeed, FeaturedView, ChangelogView, CalendarRedirectView, ExporterView are all accurately descriptive class names.",
+        "Module-level helpers in agenda/views/utils.py are precisely named: get_schedule_exporters, find_schedule_exporter, build_public_schedule_exporters, get_schedule_exporter_content, load_starred_ics_token — each name predicts what the function returns or does.",
+        "Security profile classes in api/auth/devicesecurity.py use exact, discriminating names: FullAccessSecurityProfile, AllowListSecurityProfile, EventyayCheckinSecurityProfile.",
+        "do_export in api/views/exporters.py is a generic-verb name on a non-trivial method that dispatches to Celery — callers see only that something is 'done', not that the result is an async task dispatch.",
+        "do_show_quota_left in base/models/product.py at line 499 is a property named with a verb phrase (do_*) instead of a noun phrase, creating a name/kind mismatch for a property.",
+        "process_login in eventyay_common/views/auth.py does more than 'process' a login — it handles 2FA branching, sets session keys, and returns an HttpResponse or redirect; the name is a generic verb wrapper that hides the full scope of the function.",
+        "process_task_data in control/views/admin.py at line 357 mutates the task object in place (attaches .formatted_last_run_at, .name, .run_at) and returns it — 'process' is opaque for what is really format_task_for_display.",
+        "process_upload in control/views/pdf.py at line 51 returns a tuple (error_message_or_None, file_or_None), which callers must unpack — the name 'process' provides no hint about the return contract.",
+        "random_key in base/models/bbb.py is used as a default factory for meeting_id, attendee_pw, and moderator_pw fields; 'random_key' is accurate but domain-agnostic — generate_bbb_key or generate_meeting_key would communicate its purpose.",
+        "sneakpeek_redirect in agenda/views/featured.py is a one-off function name using informal vocabulary ('sneakpeek') that diverges from the snake_case-plus-domain-noun convention used everywhere else (featured_redirect or redirect_to_featured would align better).",
+        "The variable 'jo' in base/exporters/json.py at line 18 is a local two-letter abbreviation for a large nested dict (the entire JSON payload); it is not an established project abbreviation and adds no clarity.",
+        "parse_ics_token in agenda/views/utils.py at line 80 is a thin wrapper around load_starred_ics_token that strips the expiry; its name implies parsing (decoding/validation) when it actually delegates all of that upstream and just discards half the return value — extract_ics_user_id or user_id_from_ics_token would be more honest.",
+        "Abbreviation 'gs' is used repeatedly inside GeoCodeView for GlobalSettingsObject instances (lines 22, 38, 56 of control/views/geo.py); while short-lived, it appears in three separate methods, making it a repeated pattern rather than a throwaway loop var.",
+        "Codebase-wide snake_case convention is strongly upheld — naming_by_directory scan shows 1668 snake_case entries in views/ with only 1-2 camelCase outliers total across the entire project."
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium",
+      "issues_preventing_higher_score": "A cluster of generic-verb function names (do_export, process_login, process_task_data, process_upload) and one property named with a verb prefix (do_show_quota_left) create recurring moments where a developer must read the implementation to understand scope and return contract. These are spread across api, control, and eventyay_common modules rather than isolated to one area.",
+      "sub_axes": {
+        "abstraction_leverage": 80.0,
+        "indirection_cost": 75.0,
+        "interface_honesty": 72.0,
+        "delegation_density": 80.0,
+        "definition_directness": 78.0,
+        "type_discipline": 78.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "naming_quality": {
+      "strengths": [
+        "Domain vocabulary maps precisely to concepts: ScheduleFeed, FeaturedView, ChangelogView, CalendarRedirectView — a developer reading the class list can predict responsibilities without opening files.",
+        "Utility helpers in agenda/views/utils.py use action-plus-object naming (build_public_schedule_exporters, find_schedule_exporter, load_starred_ics_token) that makes intent legible from call sites.",
+        "Security profile classes use discriminating, layered names (FullAccessSecurityProfile, AllowListSecurityProfile, EventyayCheckinNoSyncSecurityProfile) that communicate both mechanism and scope.",
+        "The codebase overwhelmingly uses snake_case throughout (1668 snake_case entries in views/ alone with virtually no camelCase drift), showing a strong, enforced naming convention.",
+        "Model names throughout base/models/ (Announcement, SystemLog, VersionedModel, TimestampedModel, LogMixin, GenerateCode) are noun-based and match their responsibilities."
+      ],
+      "issue_character": "Issues cluster around a recurring generic-verb prefix pattern (do_*, process_*) applied to non-trivial functions that mutate state, dispatch async tasks, or return multi-value tuples — the names create a vague abstraction that hides the real behavior contract from call sites.",
+      "score_rationale": "The codebase earns a high baseline because domain vocabulary is consistently precise across the dominant view and model layers, and convention adherence is excellent. What pulls the score below 85 is a recognizable cluster of generic-verb names (do_export, process_login, process_task_data, process_upload, do_show_quota_left) spread across multiple modules where the name actively misleads about return shape or scope. Per the anchor, at 80 a developer 'regularly encounters names that don't communicate intent' — these occurrences are frequent enough across api, control, and eventyay_common to justify landing just below that anchor at 78."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "naming_quality",
+      "identifier": "generic_verb_do_export",
+      "summary": "do_export uses a generic 'do_*' verb that hides async Celery dispatch semantics",
+      "related_files": ["app/eventyay/api/views/exporters.py"],
+      "evidence": [
+        "EventExportersViewSet.do_export at line 129 dispatches export.apply_async and OrganizerExportersViewSet.do_export at line 160 dispatches multiexport.apply_async — both are async task submissions, not generic actions.",
+        "Both implementations have identical names despite dispatching different tasks with different argument shapes (args tuple vs kwargs dict)."
+      ],
+      "suggestion": "Rename EventExportersViewSet.do_export to enqueue_event_export and OrganizerExportersViewSet.do_export to enqueue_organizer_export; this communicates async dispatch and distinguishes the two overrides.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "generic_verb_prefix"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "generic_verb_process_login",
+      "summary": "process_login is a vague verb wrapper for a function that handles 2FA branching and session setup",
+      "related_files": ["app/eventyay/eventyay_common/views/auth.py"],
+      "evidence": [
+        "process_login at line 61 sets session keys, checks require_2fa, conditionally redirects to a 2FA URL, and on the happy path calls auth_login and sets login time — it is the full post-authentication pipeline, not a generic processor.",
+        "The docstring says 'This method allows you to return a response to a successful log-in' but the name does not reflect that it returns an HttpResponse unconditionally."
+      ],
+      "suggestion": "Rename to complete_login_flow or handle_post_authentication to communicate that this function drives the entire post-login pipeline (2FA redirect or session establishment) and always returns an HttpResponse.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "generic_verb_prefix"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "generic_verb_process_task_data",
+      "summary": "process_task_data in admin view mutates and annotates a task object but the name hides what is produced",
+      "related_files": ["app/eventyay/control/views/admin.py"],
+      "evidence": [
+        "process_task_data at line 357 attaches formatted_last_run_at, renames task.name in place, and sets task.run_at from a cron description — it is a display-formatting step, not a generic data processor.",
+        "The function returns the mutated task object, making the in-place mutation and return both invisible from the call site given only the name."
+      ],
+      "suggestion": "Rename to format_task_for_display or annotate_task_display_fields to communicate that this prepares a task object for template rendering.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "generic_verb_prefix"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "property_do_show_quota_left",
+      "summary": "Property do_show_quota_left uses a verb prefix that collides with the property kind contract",
+      "related_files": ["app/eventyay/base/models/product.py"],
+      "evidence": [
+        "do_show_quota_left at line 499 is a @property that returns a boolean resolving whether quota remaining should be shown — verb-prefix 'do_' names are a command-pattern convention, not a query/property convention.",
+        "All sibling properties on the same model (admission, active, default_price) and related boolean helpers use noun or adjective naming; 'do_' is an outlier."
+      ],
+      "suggestion": "Rename to show_quota_left (dropping 'do_'), which makes it a clear boolean query property consistent with sibling naming.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "generic_verb_prefix"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "misleading_parse_ics_token",
+      "summary": "parse_ics_token delegates all validation to load_starred_ics_token and discards expiry — name implies it does the parsing",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "parse_ics_token at line 80 calls load_starred_ics_token and returns only user_id, discarding expiry_dt — the real parsing and validation happens in load_starred_ics_token.",
+        "The function is a thin user_id extractor, not a parser; callers that see 'parse_ics_token' may assume it performs the validation that is actually performed upstream."
+      ],
+      "suggestion": "Rename to extract_ics_user_id or user_id_from_token to accurately describe what the function returns and to distinguish it clearly from load_starred_ics_token which does the actual validation.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "name_behavior_mismatch"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "informal_sneakpeek_redirect",
+      "summary": "sneakpeek_redirect uses informal vocabulary that diverges from the domain naming convention in the surrounding module",
+      "related_files": ["app/eventyay/agenda/views/featured.py"],
+      "evidence": [
+        "sneakpeek_redirect at line 11 is a module-level function in a file otherwise composed of precise class names (FeaturedView) and standard Django idioms.",
+        "The combined word 'sneakpeek' is informal and unrelated to the view's stated domain concept ('featured submissions'); the URL it redirects to is request.event.urls.featured."
+      ],
+      "suggestion": "Rename to redirect_to_featured or featured_redirect to align with the domain concept and the naming style of sibling views in the same module.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "A recurring generic-verb prefix pattern (do_*, process_*) appears across api, control, and eventyay_common modules, suggesting the naming convention guidance was not consistently applied when these utilities were introduced.",
+      "The name/behavior contract for thin wrapper functions (parse_ics_token over load_starred_ics_token) was not reviewed to ensure the wrapper name accurately reflects the reduced scope."
+    ],
+    "likely_symptoms": [
+      "generic_verb_do_export",
+      "generic_verb_process_login",
+      "generic_verb_process_task_data"
+    ],
+    "possible_false_positives": []
+  }
+}

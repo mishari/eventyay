@@ -1,0 +1,133 @@
+{
+  "batch": "abstraction_fitness",
+  "batch_index": 6,
+  "assessments": {
+    "abstraction_fitness": 66.0
+  },
+  "dimension_notes": {
+    "abstraction_fitness": {
+      "evidence": [
+        "agenda/views/utils.py: parse_ics_token() is a pure one-liner that discards the second return value of load_starred_ics_token() and returns only user_id — no policy or translation added, classic pass-through wrapper.",
+        "presale/utils.py: _event_view / event_view wrapper chain — event_view() deprecated wrapper returns the bare function or a noop lambda, while _event_view() does the real work; the two-layer split adds indirection with only a deprecation note bridging them.",
+        "eventyay_common/utils.py: check_create_permission() returns 'True' from an if/else that could be 'return is_create_permission or is_active_staff_session' — minor but symptomatic of delegation-heavy style.",
+        "common/views/helpers.py: get_static() is a thin wrapper around FileResponse(open(...)) that adds only a 404 guard and a log line — borderline useful but the function surface is narrow.",
+        "base/services/cancelevent.py: _send_mail/_send_wle_mail thin helpers that call the generic mail() function with pre-formatted args; they do real translation work so they justify their existence, but the naming is generic.",
+        "base/models/__init__.py: comprehensive re-export facade with full __all__ — intentional public-import stabilization, appropriate use.",
+        "core/utils/statsd.py: FakeStatsD mirrors all methods of StatsD with pass stubs and no doc — classic null-object pattern; single concrete implementation of StatsD with no extension pressure visible in the codebase.",
+        "features/analytics/graphs/utils.py: pretalx_uni18n() duplicates a locale-resolution pattern that already exists in the i18nfield library — generic helper surface solving a problem the underlying library handles.",
+        "control/views/organizer.py: ExportMixin mixes export orchestration into a view mixin — moderate responsibility leak rather than a bounded domain API.",
+        "base/services/announcement.py: create_announcement(**kwargs) / update_announcement(**kwargs) use **kwargs as implicit parameter bags; callers have no static contract for what keys are required, typical over-broad dict/config parameter pattern.",
+        "common/views/cache.py: etag_cache_page() has 9 parameters passed through from conditional_cache_page(); the function does real work (ETag logic) so not pure delegation, but the outer decorator only adds 'condition' and 'server_timeout' and immediately re-delegates all state.",
+        "features/social/utils.py: update_user_profile_from_social() directly mutates user.profile dict with string key paths — uses a JSON dict as an implicit parameter bag for structured profile data."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {
+        "abstraction_leverage": 62.0,
+        "indirection_cost": 58.0,
+        "interface_honesty": 65.0,
+        "delegation_density": 60.0,
+        "definition_directness": 70.0,
+        "type_discipline": 68.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "abstraction_fitness": {
+      "strengths": [
+        "base/models/__init__.py uses a genuine facade pattern to stabilize public import paths — all 100+ models re-exported with a complete __all__.",
+        "Domain services (orders, cart, checkin, mail) each expose bounded, named-function APIs rather than generic dispatch tables.",
+        "BasePaymentProvider and BaseAuthBackend are well-reasoned extension points with documented contracts and real extension pressure from payment plugins.",
+        "agenda/views/utils.py contains focused, intention-revealing helpers (load_starred_ics_token, get_schedule_exporters) with clear bounded scope.",
+        "StatsdProtocol / FakeStatsD / StatsD trio implements a clean null-object pattern that eliminates conditional metric branching throughout the codebase."
+      ],
+      "issue_character": "The dominant pattern is narrow pass-through helpers (parse_ics_token, event_view, check_create_permission) and **kwargs-based implicit parameter bags (create_announcement, update_announcement, update_user_profile_from_social) rather than structural over-engineering.",
+      "score_rationale": "The codebase sits below the 70-adequate threshold for this dimension. Core service modules and model facades are well-formed, but there is a recurring pattern of thin wrapper functions that add no policy, implicit dict-based parameter bags that hide structure, and a deprecated two-layer view wrapper chain that should have been removed. These are codebase-wide enough (present across presale, cfp, orga, api, common namespaces) to pull the score below adequate, but not severe enough to approach the 50-mediocre mark since the foundational layer (models, services) is structurally sound."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "af-01",
+      "summary": "parse_ics_token is a zero-policy wrapper around load_starred_ics_token",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "parse_ics_token() calls load_starred_ics_token() and immediately discards the second return value (_expiry_dt), returning only user_id — no logic, no policy, no translation."
+      ],
+      "suggestion": "Inline parse_ics_token at every call site, or rename it to extract_user_id_from_ics_token and document why the expiry is intentionally discarded.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "af-02",
+      "summary": "create_announcement / update_announcement use **kwargs as implicit parameter bags with no static contract",
+      "related_files": ["app/eventyay/base/services/announcement.py"],
+      "evidence": [
+        "create_announcement(**kwargs) passes kwargs directly into Announcement.objects.create() after filtering None values — callers have no type-checked contract for required vs optional fields.",
+        "update_announcement(**kwargs) pops 'id' and 'event' from kwargs then iterates the rest — the signature is completely opaque."
+      ],
+      "suggestion": "Replace **kwargs with explicit typed parameters matching the Announcement model fields; use a dataclass or TypedDict as the boundary type if the caller set is diverse.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "af-03",
+      "summary": "Deprecated event_view wrapper layer should be removed",
+      "related_files": ["app/eventyay/presale/utils.py"],
+      "evidence": [
+        "event_view() emits a DeprecationWarning and returns either a noop lambda or the bare function — the real logic lives in _event_view().",
+        "The two-function split creates a visible indirection layer with no functional value."
+      ],
+      "suggestion": "Remove event_view() entirely after auditing call sites in presale/urls.py and elsewhere; the URL routing layer already applies _event_view automatically per the deprecation message.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "af-04",
+      "summary": "update_user_profile_from_social uses raw string-keyed dict mutations as an implicit parameter bag for structured profile data",
+      "related_files": ["app/eventyay/features/social/utils.py"],
+      "evidence": [
+        "user.profile['avatar']['url'], user.profile['fields'][field['id']], user.profile['display_name'] — all accessed via dict string keys with no schema enforcement.",
+        "The profile dict is also mutated across multiple branches with setdefault and nested dict creation."
+      ],
+      "suggestion": "Define a UserProfile TypedDict or dataclass to document and enforce the expected profile shape; replace ad-hoc dict mutation with structured field assignment.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "af-05",
+      "summary": "FakeStatsD / StatsD have a single concrete implementation with no extension pressure — protocol abstraction adds indirection cost",
+      "related_files": ["app/eventyay/core/utils/statsd.py"],
+      "evidence": [
+        "FakeStatsD mirrors every method of StatsD with pass stubs; StatsD is the only real implementation.",
+        "No plugin or injection point exists to swap implementations; the null-object could be handled with a simpler conditional at the statsd() context manager."
+      ],
+      "suggestion": "Collapse FakeStatsD into the statsd() context manager by returning a null-object literal or by checking settings.STATSD_HOST inline, eliminating the parallel class hierarchy for a single-implementation case.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Incremental wrapping: helpers were added to isolate deprecated API surfaces without removing the original functions, creating a wrapper chain.",
+      "Missing typed boundary contracts: service layer functions use **kwargs instead of typed signatures, making implicit parameter bags the de facto API."
+    ],
+    "likely_symptoms": [
+      "af-01 (parse_ics_token) is a symptom of the wrapper-chain pattern rather than a root cause.",
+      "af-05 (FakeStatsD class hierarchy) is a symptom of premature extension-point design."
+    ],
+    "possible_false_positives": [
+      "FakeStatsD null-object pattern is a well-known design practice; the issue is mild and may be intentional for testability."
+    ]
+  }
+}

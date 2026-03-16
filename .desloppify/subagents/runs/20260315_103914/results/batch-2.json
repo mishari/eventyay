@@ -1,0 +1,123 @@
+{
+  "batch": "high_level_elegance",
+  "batch_index": 2,
+  "assessments": {
+    "high_level_elegance": 55.0
+  },
+  "dimension_notes": {
+    "high_level_elegance": {
+      "evidence": [
+        "Top-level package names (base, api, control, presale, agenda, cfp, orga, schedule, common, plugins) broadly reflect domain capabilities, which is a positive signal",
+        "base/models/__init__.py exports 100+ symbols — the hub is enormous; a new engineer cannot infer from the package structure which models belong to ticketing vs. conference-talk vs. video-streaming concerns",
+        "base/models/ contains models for radically different domains: ticketing (Order, Invoice, Voucher), conference-talk (Submission, Review, Slot, Schedule, Track), video/AV infrastructure (BBBServer, JanusServer, TurnServer, StreamingServer), social/chat (Channel, ChatEvent, Membership, Poll, Roulette), and CMS (Announcement, Page, Exhibitor) — all in one monolithic model package",
+        "base/models/world.py exists inside base/models despite 'World' being a video-platform concept (from venueless heritage); it does not belong in the same namespace as ticketing base models",
+        "base/models/bbb.py, janus.py, turn.py, streaming.py, chat.py, poll.py, roulette.py, exhibitor.py, poster.py all live next to orders.py, invoices.py, product.py — no sub-namespace separates concerns",
+        "eventyay/eventyay_common/ sub-package name is redundant ('eventyay common' inside 'eventyay'), suggesting unclear ownership of what belongs in 'common' vs. 'eventyay_common'",
+        "Two parallel services layers: base/services/ and the eventyay_common/ package both provide cross-cutting services without a documented boundary rule",
+        "base/services/__init__.py is empty — the services layer advertises itself but has no cohesive entry point or exported API",
+        "base/__init__.py imports celery_app at module level in addition to AppConfig.ready() — double-registration of the same module-load side effect",
+        "Announcement model (base/models/announcement.py) does not inherit from LoggedModel, TimestampedModel, or PretalxModel; its timestamp field is manually named 'timestamp' while sibling models use 'created'/'updated' from TimestampedModel — ownership/structure is inconsistent",
+        "control/global_settings.py uses template 'pretixcontrol/global_settings.html' — template path references legacy pretixcontrol namespace, showing the control subsystem still has legacy surface bleed-through",
+        "control/views/shredder.py template 'pretixcontrol/shredder/index.html' — same issue"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "high_level_elegance": {
+      "strengths": [
+        "The top-level module names (api, control, presale, cfp, orga, agenda, schedule, plugins) are broadly aligned with major domain capabilities, making initial orientation possible",
+        "The plugin system is clearly delineated in eventyay/plugins/ with each plugin as its own sub-package",
+        "base/models/mixins.py provides a coherent set of composable abstractions (TimestampedModel, LogMixin, FileCleanupMixin, PretalxModel, GenerateCode, OrderedModel) that are reused across models"
+      ],
+      "issue_character": "The core issue is that base/ has become an unbounded catch-all that merges three distinct product domains (ticketing, conference scheduling, video/AV) into one model namespace and one 100-symbol __init__.py, making ownership and change boundaries invisible to new engineers.",
+      "score_rationale": "The high-level package naming is adequate, but decomposition inside base/ does not localize change: modifying a video-infrastructure model and a ticketing model both touch the same __init__.py hub and the same test imports. The presence of world.py, bbb.py, janus.py, and chat.py alongside orders.py and invoices.py in a single models/ directory, combined with the stale pretixcontrol template references and the redundant eventyay_common naming, places this below the 65-point midrange anchor. It is not as low as a fully undifferentiated codebase, but the structural confusion from the three-product merger is still very visible."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-001",
+      "summary": "base/models/ mixes ticketing, conference-talk, and video/AV domain models in a single flat namespace with a 100+ symbol __init__.py",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/base/models/world.py",
+        "app/eventyay/base/models/bbb.py",
+        "app/eventyay/base/models/janus.py",
+        "app/eventyay/base/models/chat.py",
+        "app/eventyay/base/models/streaming.py"
+      ],
+      "evidence": [
+        "__init__.py exports 100+ symbols spanning ticketing (Order, Invoice, Voucher, CartPosition), talk (Submission, Review, TalkSlot, Schedule), video (BBBServer, JanusServer, TurnServer, StreamingServer, StreamSchedule), and social (Channel, ChatEvent, Poll, Roulette, Exhibitor)",
+        "A new engineer cannot identify which models belong to which product domain without reading every file"
+      ],
+      "suggestion": "Group models into domain sub-packages (e.g., base/models/ticketing/, base/models/talk/, base/models/live/) and update __init__.py to import from them; this is an incremental migration, not a big-bang rewrite",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-002",
+      "summary": "eventyay_common/ sub-package name is confusing and duplicates 'common/' without documented ownership rule",
+      "related_files": [
+        "app/eventyay/eventyay_common/__init__.py",
+        "app/eventyay/common/__init__.py"
+      ],
+      "evidence": [
+        "Both eventyay/common/ and eventyay/eventyay_common/ exist; the redundant inner name 'eventyay_common' inside the eventyay package makes the distinction non-obvious",
+        "base/services/announcement.py, base/services/auth.py, and eventyay_common/tasks.py all provide cross-cutting services with no documented rule distinguishing which belongs where"
+      ],
+      "suggestion": "Rename or merge eventyay_common into common, or add a clear ARCHITECTURE note at the package level explaining what belongs in each",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-003",
+      "summary": "control/ views still reference pretixcontrol/ template paths, exposing legacy namespace in the public surface",
+      "related_files": [
+        "app/eventyay/control/views/global_settings.py",
+        "app/eventyay/control/views/shredder.py"
+      ],
+      "evidence": [
+        "global_settings.py line 33: `template_name = 'pretixcontrol/global_settings.html'`",
+        "shredder.py line 41: `template_name = 'pretixcontrol/shredder/index.html'`"
+      ],
+      "suggestion": "Migrate template paths to eventyay/control/ namespace and update template directories accordingly; track remaining pretixcontrol/ references as a technical debt ticket",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-004",
+      "summary": "Announcement model is structurally inconsistent: not a PretalxModel, uses 'timestamp' instead of 'created', has no logging mixin",
+      "related_files": [
+        "app/eventyay/base/models/announcement.py"
+      ],
+      "evidence": [
+        "Announcement extends plain models.Model, not PretalxModel or LoggedModel",
+        "Field named 'timestamp' (auto_now_add=True) while 90% of sibling models use TimestampedModel's 'created'/'updated' fields",
+        "No log_action() method or LogMixin inheritance"
+      ],
+      "suggestion": "Have Announcement extend PretalxModel (or at minimum TimestampedModel) to align with codebase conventions; rename 'timestamp' to 'created' for consistency",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The codebase is a merger of three separate products (pretix, pretalx, venueless); each product had its own model domain and the merge placed all models into base/models/ without a domain sub-structuring pass",
+      "The 'base' package was the natural import anchor for pretix, so everything got added there rather than creating new domain-aligned packages"
+    ],
+    "likely_symptoms": [
+      "hle-001 is the root structural issue; hle-002, hle-003, hle-004 are symptoms of the same merge-without-cleanup pattern"
+    ],
+    "possible_false_positives": []
+  }
+}

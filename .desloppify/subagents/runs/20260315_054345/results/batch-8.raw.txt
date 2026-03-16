@@ -1,0 +1,141 @@
+{
+  "batch": "low_level_elegance",
+  "batch_index": 8,
+  "assessments": {
+    "low_level_elegance": 68.0
+  },
+  "dimension_notes": {
+    "low_level_elegance": {
+      "evidence": [
+        "agenda/views/utils.py: get_schedule_exporter_content() has interleaved '-my' prefix checks in two separate code paths (lines 205-229) — the '-my' substring check is duplicated and the two blocks differ only in where talk_ids come from, but share no common extraction helper.",
+        "presale/utils.py: _detect_event() is a 160-line function with three major code paths (event_domain, organizer_domain, main_domain) each containing inner try/except blocks and redirect logic; the exception handlers themselves contain nested branching for slug-case-mismatch correction.",
+        "common/views/cache.py: etag_cache_page() has 9 parameters and interleaved conditional logic for cache miss, etag match, and cache hit scenarios in a single function body — state mutation (current_etag = None reassignment) happens mid-function across multiple branches.",
+        "base/services/cart.py: CartManager uses AddOperation, RemoveOperation, ExtendOperation, VoucherOperation namedtuples that share overlapping fields (position, product, variation, price, etc.) without a common base — AddOperation has 12 fields while ExtendOperation has 10; the divergence is tracked manually.",
+        "base/services/orders.py: reactivate_order() is clean and intention-revealing — guard clause early exit, single responsibility, minimal side effects.",
+        "schedule/ascii.py: talk_card() is a generator with complex conditional logic for height thresholds — the height-based branching (height <= 5, height_after_title <= 3, height > 4, height > 2) distributes implicit constants across multiple if-branches with no named threshold constants.",
+        "features/analytics/graphs/utils.py: pretalx_uni18n() is direct and minimal — three branches, each returns immediately, correct handling of missing keys.",
+        "features/social/utils.py: update_user_profile_from_social() catches bare 'except:' on network request failure at line 38 — swallows all exceptions including KeyboardInterrupt.",
+        "eventyay_common/utils.py: check_create_permission() has 'if is_create_permission or is_active_staff_session: return True; return False' — the boolean expression can be collapsed to a direct return.",
+        "base/services/checkin.py: get_logic_environment() builds a Logic object with closures that share implicit state through ev closure variable — the logic environment construction is embedded in a factory function rather than a class, mixing configuration with operation.",
+        "presale/utils.py: 'eventyay_event_access_{}'.format(request.event.pk) string key is constructed twice within the same function (lines 106 and 107) rather than extracted to a local variable.",
+        "agenda/views/utils.py: build_public_schedule_exporters() hardcodes the sort order dict with 15 magic string keys inline — the ordering constants are not named or grouped by category."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "low_level_elegance": {
+      "strengths": [
+        "Domain service functions (reactivate_order, _send_wle_mail, load_starred_ics_token) follow the guard-clause pattern cleanly — early return on error, main logic at the end.",
+        "CartManager uses named namedtuples for operation types instead of raw dicts, making the operation queue self-documenting.",
+        "schedule/ascii.py uses generator delegation (yield) for progressive line construction — appropriate low-level technique for terminal rendering.",
+        "pretalx_uni18n() and median_value() are small, direct, and precisely scoped utility functions.",
+        "Base service layer consistently uses Django's transaction.atomic() and select_for_update() patterns, keeping side effects bounded and explicit."
+      ],
+      "issue_character": "The dominant issues are moderate-scale: large multi-branch functions that mix path resolution with business logic, duplicated inline string expressions, and scattered magic threshold constants rather than provable defects or monolithic code.",
+      "score_rationale": "The codebase sits above 65 but below the 70-adequate mark for low-level elegance. Core service functions are clean and intention-revealing. The significant drag comes from several large view-layer and cache functions that mix control flow paths without extraction (_detect_event, get_schedule_exporter_content, etag_cache_page), a bare-except that swallows all exceptions, and repeated inline string construction. These are codebase-wide enough to affect reading but are not severe enough to reach mediocre territory."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "lle-01",
+      "summary": "_detect_event() mixes three domain-resolution code paths with nested exception and redirect logic in a 160-line function",
+      "related_files": ["app/eventyay/presale/utils.py"],
+      "evidence": [
+        "Lines 29-186: single function with three top-level branches (event_domain, organizer_domain, main_domain), each containing inner try/except, redirect construction, and domain-forwarding logic.",
+        "The Event.DoesNotExist handler at line 152 contains its own inner try/except for case-insensitive slug correction, adding a third nesting level.",
+        "The session-based event access check (lines 106-118) embeds credential validation inline rather than in a named helper."
+      ],
+      "suggestion": "Extract the three domain-resolution paths into private helper functions (_resolve_event_domain, _resolve_organizer_domain, _resolve_main_domain) and the session access check into _check_session_event_access(); _detect_event() becomes an orchestrator.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "lle-02",
+      "summary": "get_schedule_exporter_content() duplicates '-my' prefix check and talk_ids resolution in two separate code paths",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "Lines 205-229: the '-my' substring check appears in three separate if/elif conditions.",
+        "Lines 213-218 (token path) and lines 222-229 (session path) both build talk_ids from SubmissionFavourite with identical query structure, differing only in the user_id source.",
+        "A bare 'return' on line 213 when user_id is None exits without explanation."
+      ],
+      "suggestion": "Extract talk_ids resolution to a helper _get_starred_talk_ids(user_id, event) and unify the token/session paths with a single user_id resolution step before the shared talk_ids query.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "lle-03",
+      "summary": "Bare except in update_user_profile_from_social swallows all exceptions including system exceptions",
+      "related_files": ["app/eventyay/features/social/utils.py"],
+      "evidence": [
+        "Line 38: 'except:' with no exception type — catches KeyboardInterrupt, SystemExit, MemoryError, and all other base exceptions.",
+        "The except block calls logging.exception() but continues silently, making network or storage failures invisible at runtime beyond the log."
+      ],
+      "suggestion": "Replace bare except with 'except Exception:' to preserve system exception propagation while still catching application-level errors.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "lle-04",
+      "summary": "check_create_permission() uses unnecessary if/else instead of returning the boolean expression directly",
+      "related_files": ["app/eventyay/eventyay_common/utils.py"],
+      "evidence": [
+        "Lines 64-66: 'if is_create_permission or is_active_staff_session: return True; return False' — the condition is already a boolean expression that can be returned directly."
+      ],
+      "suggestion": "Replace the if/else with 'return is_create_permission or is_active_staff_session'.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "lle-05",
+      "summary": "Session key string 'eventyay_event_access_{}'.format(request.event.pk) constructed twice inline in _detect_event",
+      "related_files": ["app/eventyay/presale/utils.py"],
+      "evidence": [
+        "Line 106: 'eventyay_event_access_{}'.format(request.event.pk) used in 'in' check.",
+        "Line 107: same expression used again in request.session.get() call.",
+        "Duplication means a typo in one instance would create a silent bug."
+      ],
+      "suggestion": "Extract to a local variable: 'session_key = \"eventyay_event_access_{}\".format(request.event.pk)' before the conditional block.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "lle-06",
+      "summary": "build_public_schedule_exporters() embeds 15 magic sort-order string constants as an inline dict literal",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "Lines 155-162: order dict with 15 hardcoded string keys (e.g., 'google-calendar', 'schedule.ics', 'faved.ics') and integer ordinal values defined inline in the function body.",
+        "No named constant or comment groups the categories (public calendar, schedule formats, personal exports)."
+      ],
+      "suggestion": "Define the sort order as a module-level constant EXPORTER_SORT_ORDER with inline comments grouping the categories, so the sort key is separated from the data assembly logic.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "View-layer functions grew incrementally without extraction points — _detect_event and get_schedule_exporter_content accumulated branches as new routing cases were added.",
+      "Magic constants for display logic (schedule sort order, talk card height thresholds) were not promoted to named module-level constants during initial implementation."
+    ],
+    "likely_symptoms": [
+      "lle-04 (check_create_permission if/else) and lle-05 (duplicated session key string) are likely symptoms of quick-iteration style rather than structural issues."
+    ],
+    "possible_false_positives": [
+      "etag_cache_page() complexity may be inherent to correct ETag + cache invalidation semantics — the multiple state transitions reflect real HTTP cache protocol requirements."
+    ]
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "batch": "package_organization",
+  "batch_index": 13,
+  "assessments": {"package_organization": 52.0},
+  "dimension_notes": {
+    "package_organization": {
+      "evidence": [
+        "app/eventyay/base/models/ contains 60+ files: access_code.py, announcement.py, audit.py, auth.py, auth_token.py, availability.py, base.py, bbb.py, billing.py, cache.py, cfp.py, chat.py, checkin.py, choices.py, comment.py, devices.py, event.py, exhibitor.py, feedback.py, fields.py, giftcards.py, information.py, invoices.py, janus.py, log.py, mail.py, mixins.py, notifications.py, orders.py, organizer.py, page.py, poll.py, poster.py, product.py, profile.py, question.py, resource.py, review.py, room.py, roomquestion.py, roulette.py, schedule.py, seating.py, settings.py, slot.py, storage_model.py, stream_schedule.py, streaming.py, submission.py, systemlog.py, tag.py, tax.py, track.py, transaction.py, turn.py, type.py, vouchers.py, waitinglist.py, world.py — flat directory overload with mixed concerns spanning ticketing, conferencing, chat, video, and seating",
+        "app/eventyay/base/services/ contains 40 files: announcement.py, auth.py, bbb.py, cancelevent.py, cart.py, chat.py, checkin.py, cleanup.py, connections.py, event.py, exhibition.py, export.py, invoices.py, janus.py, locking.py, mail.py, notifications.py, orderimport.py, orders.py, poll.py, poster.py, pricing.py, question.py, quotas.py, reactions.py, room.py, roulette.py, seating.py, shredder.py, stats.py, tasks.py, teams.py, telemetry.py, tickets.py, turn.py, update_check.py, user.py, vouchers.py, waitinglist.py — 40 service files in a single flat directory spanning fundamentally distinct domains",
+        "app/eventyay/ root: 27 subdirectories including agenda, api, base, cfp, common, config, control, core, event, eventyay_common, features, helpers, jinja-templates, locale, mail, multidomain, orga, person, plugins, presale, schedule, static, storage, submission — some directories name concerns clearly (api, presale, control) while others overlap (common vs core vs helpers vs eventyay_common)",
+        "app/eventyay/base/ itself spans: admin.py, auth.py, banlist.py, cache.py, channels.py, configurations/, context.py, decimal.py, email.py, exporter.py, exporters/, forms/, i18n.py, invoice.py, js_catalog_template.py, management/, metrics.py, middleware.py, migrations/, models/, notifications.py, orderimport.py, payment.py, pdf.py, plugins.py, reldate.py, secretgenerators/, secrets.py — 'base' is semantically undefined and acts as a dumping ground for the entire ticketing+conferencing concern",
+        "app/eventyay/eventyay_common/ and app/eventyay/common/ both exist; their responsibilities overlap (views/account, views/organizer in eventyay_common; context_processors, exceptions, image, mail, text in common) — ambiguous boundary",
+        "app/eventyay/helpers/ contains: __init__.py, formats/ (locale format helpers), periodic.py, reportlab.py, stripe_utils.py — mixes generic utilities with stripe-specific payment code and reportlab PDF utilities",
+        "Coupling observation: base/services/ imports from base/models/ (correct direction), but also from api/models/ (e.g. base/services/orders.py imports OAuthApplication) — cross-boundary coupling from service layer to API layer",
+        "app/eventyay/core/ contains only utils/redis.py and utils/statsd.py — two files in a 'core' directory, very thin; likely a straggler that should merge into helpers/ or base/"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "package_organization": {
+      "strengths": [
+        "Top-level domain separation (api, control, presale, agenda, orga) is conceptually sound and matches Django app boundaries",
+        "migrations/ directories are correctly isolated from production code",
+        "The plugins/ subdirectory cleanly groups optional extension code",
+        "Dedicated features/ directory for live/social/analytics separates optional feature flags from core"
+      ],
+      "issue_character": "The base/ package acts as an undifferentiated monolith containing 60+ models, 40+ services, and cross-cutting helpers with no internal grouping by domain, causing high cognitive overhead and difficult ownership assignment.",
+      "score_rationale": "The outer Django-app structure is reasonable but the internal layout of base/ is severely overloaded: 60+ model files and 40+ service files in flat directories spanning ticketing, conferencing, video, seating, and chat represent a flat directory overload that the rubric flags. Additionally, common/ and eventyay_common/ have ambiguous, overlapping boundaries, and core/ holds only 2 utility files. The codebase is significantly above trivial size (>200 production files) so flatness is not justified by scale. Score reflects many confirmed overload signals partially offset by coherent outer app boundaries."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-01",
+      "summary": "base/models/ flat directory overload — 60+ files spanning 6+ distinct domains",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/base/models/bbb.py",
+        "app/eventyay/base/models/chat.py",
+        "app/eventyay/base/models/janus.py",
+        "app/eventyay/base/models/poster.py",
+        "app/eventyay/base/models/poll.py",
+        "app/eventyay/base/models/seating.py",
+        "app/eventyay/base/models/streaming.py"
+      ],
+      "evidence": [
+        "60+ model files in a single flat directory; domains present: ticketing (orders, product, vouchers, tax, invoices), conferencing (submission, schedule, slot, track), chat (chat, channel, membership), video (bbb, janus, streaming, stream_schedule, turn), seating (seating, room, roomquestion), exhibitor (exhibitor, poster, roulette)"
+      ],
+      "suggestion": "Staged reorg plan: (1) Create subdirectories: base/models/ticketing/, base/models/conferencing/, base/models/chat/, base/models/video/, base/models/seating/. (2) Move files by domain affinity. (3) Update __init__.py imports to preserve the flat public API surface (no callers need to change). (4) Validate with 'python -c \"from eventyay.base.models import *\"' and run pytest tests/ to confirm no import regressions. Do this in a single PR per subdomain to keep diffs reviewable.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-02",
+      "summary": "base/services/ flat directory overload — 40 service files across distinct domains",
+      "related_files": [
+        "app/eventyay/base/services/__init__.py",
+        "app/eventyay/base/services/bbb.py",
+        "app/eventyay/base/services/chat.py",
+        "app/eventyay/base/services/poll.py",
+        "app/eventyay/base/services/poster.py",
+        "app/eventyay/base/services/room.py"
+      ],
+      "evidence": [
+        "40 service files in a flat directory; domains overlap with base/models/ — chat, video (bbb, janus, turn), ticketing (orders, cart, invoices, vouchers, pricing), conferencing (teams, shredder)"
+      ],
+      "suggestion": "Mirror the model subdirectory split in services/: base/services/ticketing/, base/services/conferencing/, base/services/chat/, base/services/video/. Move files and update all importers. Use 'grep -r \"from eventyay.base.services\" app/' to enumerate callers before moving. Validate with pytest tests/.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-03",
+      "summary": "common/ and eventyay_common/ have overlapping, ambiguous responsibilities",
+      "related_files": [
+        "app/eventyay/common/",
+        "app/eventyay/eventyay_common/"
+      ],
+      "evidence": [
+        "common/ contains: context_processors, exceptions, image, mail, text, urls, views/mixins",
+        "eventyay_common/ contains: views/account, views/organizer, views/event, views/team — all are event-management UI views, not 'common' utilities",
+        "The split suggests eventyay_common/ holds a specific subdomain (organizer/account UI) rather than shared infrastructure"
+      ],
+      "suggestion": "Rename eventyay_common/ to a more descriptive package (e.g., account/ or eventyay_admin/) reflecting its actual contents. Then audit common/ to ensure it contains only genuinely cross-cutting utilities. Run 'grep -r \"eventyay_common\" app/' to enumerate import sites before renaming.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-04",
+      "summary": "core/ is a thin straggler package with only 2 utility files",
+      "related_files": [
+        "app/eventyay/core/utils/redis.py",
+        "app/eventyay/core/utils/statsd.py"
+      ],
+      "evidence": [
+        "core/utils/ contains exactly 2 files (redis.py, statsd.py); helpers/ already exists for cross-cutting utilities",
+        "Dedicated 'core' namespace implies architectural centrality but delivers only two infrastructure helpers"
+      ],
+      "suggestion": "Move core/utils/redis.py and core/utils/statsd.py into helpers/ (or helpers/infra/). Update importers with 'grep -r \"from eventyay.core\" app/'. Remove the now-empty core/ package to eliminate the ambiguous boundary.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "base/ accumulated files from two legacy systems (pretix + pretalx) without a post-merge reorganization pass",
+      "No enforced package boundary policy during the platform merger meant files landed in whichever existing directory seemed closest"
+    ],
+    "likely_symptoms": ["PO-01", "PO-02"],
+    "possible_false_positives": ["helpers/ mixing stripe_utils — stripe is third-party but may be the only payment integration, making helpers/ an acceptable home for it"]
+  }
+}

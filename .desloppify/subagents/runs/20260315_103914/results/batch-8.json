@@ -1,0 +1,112 @@
+{
+  "batch": "low_level_elegance",
+  "batch_index": 8,
+  "assessments": {
+    "low_level_elegance": 60.0
+  },
+  "dimension_notes": {
+    "low_level_elegance": {
+      "evidence": [
+        "app/eventyay/agenda/views/utils.py: get_schedule_exporter_content() is a 50-line function with 4 nested if/elif branches for the '-my' exporter case — same SubmissionFavourite query is duplicated in two branches (token path and user path) that differ only in the user_id source.",
+        "app/eventyay/agenda/views/utils.py: get_schedule_exporter_content() sets exporter.schedule, exporter.is_orga, exporter.talk_ids as ad-hoc attributes on the exporter object rather than passing them explicitly — implicit state mutation on an external object.",
+        "app/eventyay/presale/utils.py: _detect_event() is a 155-line function combining: domain detection (3 branches), locale setup, live-check with session fallback, ticket viewing permission check, plugin check, and signal dispatch — multiple interleaved responsibilities in a single function.",
+        "app/eventyay/presale/utils.py: _detect_event() has a bare 'except Exception as exc' for session load failure that continues with 'can_access' unchanged — swallows potential configuration errors silently.",
+        "app/eventyay/common/views/cache.py: etag_cache_page() checks requested_etag vs current_etag three times across the function — the ETag comparison logic is spread across two separate if-branches rather than being resolved in one place.",
+        "app/eventyay/base/views/mixins.py: BaseQuestionsViewMixin.forms property builds formlist with a complex inline conditional setting form.show_copy_answers_to_addon_button — the boolean expression spans 10 lines, testing 5 settings flags.",
+        "app/eventyay/base/services/checkin.py: get_logic_environment() defines nested closures (build_time, is_before) locally — intention-revealing and well-contained.",
+        "app/eventyay/common/views/helpers.py: get_static() is well-contained — clear 5-line function, no side effects beyond serving file.",
+        "app/eventyay/agenda/views/utils.py: build_public_schedule_exporters() is relatively direct — iterates signals, checks show_public, sorts with a clear key, builds result list.",
+        "app/eventyay/base/services/cart.py: CartError.__init__ does conditional translation logic in __init__ — acceptable but the args tuple re-assignment (self.args = args before reassigning msg) is surprising."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "low_level_elegance": {
+      "strengths": [
+        "get_logic_environment() in base/services/checkin.py correctly scopes closures and names them clearly.",
+        "build_public_schedule_exporters() in agenda/views/utils.py is intention-revealing with a clear pipeline: discover -> filter -> sort -> serialize.",
+        "conditional_cache_page() wrapper in common/views/cache.py cleanly separates the condition check from the cache delegation.",
+        "load_starred_ics_token() in agenda/views/utils.py has precise exception handling (explicit exception tuple) and a clear success/failure return contract.",
+        "LazyRuleVars class structure in base/services/checkin.py uses cached_property appropriately to avoid redundant ORM calls."
+      ],
+      "issue_character": "The primary low-level issue is oversized functions that interleave multiple responsibilities (detect+authorize+dispatch in _detect_event, get content+mutate+render in get_schedule_exporter_content) combined with ad-hoc state mutation on external objects rather than explicit parameter passing.",
+      "score_rationale": "Smaller, well-scoped functions in the codebase are clean and direct. The damage comes from several key large functions that exceed their stated scope: _detect_event() at 155 lines handles domain routing, locale, live check, ticket permissions, plugin checks, and signals; get_schedule_exporter_content() mutates exporter state rather than passing parameters; the etag_cache_page() ETag comparison is scattered. These are not trivial style issues — they create cognitive overhead when debugging and testing. A healthy codebase at this scale would decompose _detect_event into 3-4 composable helpers. The score of 60 reflects genuinely clean leaf-level code offset by problematic monoliths in key execution paths."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "detect_event_monolith",
+      "summary": "_detect_event() is a 155-line function combining domain detection, locale, auth, permissions, plugin check, and signal dispatch",
+      "related_files": ["app/eventyay/presale/utils.py"],
+      "evidence": [
+        "_detect_event handles: request.event_domain / organizer_domain / main domain routing, locale middleware call, live event check with session fallback, ticket viewing permission check, plugin check, and process_request signal dispatch",
+        "bare except Exception for session load swallows errors silently before continuing"
+      ],
+      "suggestion": "Extract _check_event_access(request, url) for the live+session check, _check_ticket_visibility(request, url) for the ticket permission check, and _dispatch_request_signals(request) for the signal loop. Each is independently testable.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "exporter_state_mutation",
+      "summary": "get_schedule_exporter_content() mutates exporter object with ad-hoc attributes instead of passing parameters",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "exporter.schedule = schedule",
+        "exporter.is_orga = is_organizer",
+        "exporter.talk_ids = talk_ids  (set in two separate branches)"
+      ],
+      "suggestion": "Add schedule, is_orga, and talk_ids as explicit parameters to the exporter's render() method, or introduce an ExportRequest dataclass passed to render(). This makes the function's side effects visible at the call site.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "my_exporter_duplicated_query",
+      "summary": "SubmissionFavourite query duplicated in two branches of get_schedule_exporter_content() differing only by user_id source",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "Token path: SubmissionFavourite.objects.filter(user_id=user_id, ...).values_list(...)",
+        "Authenticated user path: SubmissionFavourite.objects.filter(user_id=request.user.id, ...).values_list(...) — identical structure"
+      ],
+      "suggestion": "Resolve user_id from either the token or request.user before the query, then issue one query: user_id = user_id_from_token or request.user.id; talk_ids = SubmissionFavourite.objects.filter(user_id=user_id, ...).",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "etag_logic_scattered",
+      "summary": "ETag comparison logic in etag_cache_page() is checked in three separate locations rather than resolved once",
+      "related_files": ["app/eventyay/common/views/cache.py"],
+      "evidence": [
+        "Line 112: if current_etag and requested_etag and current_etag != requested_etag: current_etag = None",
+        "Line 114: elif requested_etag and current_etag == requested_etag: return 304",
+        "Line 134: if requested_etag and current_etag == requested_etag: return 304 (second check)"
+      ],
+      "suggestion": "Introduce a helper that resolves the ETag state (miss, match, mismatch) at the start of the function and use it throughout, eliminating the repeated comparisons.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Long-lived central utility functions (_detect_event) accumulated responsibilities incrementally without decomposition refactors",
+      "Exporter state mutation pattern likely originated from the exporter plugin interface design which expects attributes to be set before render()"
+    ],
+    "likely_symptoms": [
+      "detect_event_monolith — the large function is a root cause, not a symptom",
+      "my_exporter_duplicated_query — symptom of the broader function size issue"
+    ],
+    "possible_false_positives": [
+      "BaseQuestionsViewMixin.forms complex boolean — the attendee settings flags are genuinely numerous; the verbosity is partially domain-driven"
+    ]
+  }
+}

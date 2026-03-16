@@ -1,0 +1,119 @@
+{
+  "batch": "authorization_consistency",
+  "batch_index": 10,
+  "assessments": {
+    "authorization_consistency": 63.0
+  },
+  "dimension_notes": {
+    "authorization_consistency": {
+      "evidence": [
+        "plugins/checkinlists/exporters.py: CheckInListMixin inherits from BaseExporter — access control is handled at the view layer via EventPermissionRequiredMixin and 'can_view_orders' permission, not in the exporter itself. The exporter boundary is clean.",
+        "api/views/event.py: CreateEventView has 'authentication_classes = []' and 'permission_classes = []' and performs manual JWT validation inside get_payload_from_token() — authentication bypass with internal reimplementation of JWT validation rather than using DRF's standard authentication pipeline.",
+        "api/views/event.py: EventThemeView has 'permission_classes = []' — returns event theme config including event settings without any authentication; this endpoint is intentionally public but has no documentation comment explaining why.",
+        "api/views/event.py: UserFavouriteView (deprecated) has 'permission_classes = []' and performs bearer-token validation manually inside the view method via get_uid_from_token() — the deprecated endpoint has no standard auth, only custom JWT parsing in the handler body.",
+        "api/views/event.py: CustomerOrderCheckView has 'authentication_classes = ()' and 'permission_classes = ()' but is disabled (returns 501) — the disabled endpoint still exposes an unauthenticated surface.",
+        "api/views/device.py: InitializeView has 'authentication_classes = ()' and 'permission_classes = ()' — device initialization is an intentional unauthenticated endpoint (uses a one-time initialization token); the pattern is appropriate but undocumented.",
+        "control/permissions.py: EventPermissionRequiredMixin, OrganizerPermissionRequiredMixin, AdministratorPermissionRequiredMixin are clearly separated permission tiers with consistent application across control views.",
+        "control/views/admin.py: All admin views consistently use AdministratorPermissionRequiredMixin — the admin area boundary is consistently enforced.",
+        "api/views/submission.py: favourites_view, favourite_view, and favourites_merge_view all use @permission_classes([IsAuthenticated]) and then explicitly re-check 'base.list_schedule' permission — the double-check is consistent across all three sibling endpoints.",
+        "control/views/typeahead.py: @event_permission_required(None) used on typeahead endpoints — passing None means any authenticated event user can access; the intent is legitimate (authenticated but no specific permission) but the None argument is not documented.",
+        "common/views/mixins.py: ActionFromUrl._check_permission() checks is_admin_mode_active(request) as a bypass — admin mode overrides permission checks; the bypass has no audit logging.",
+        "presale/utils.py: _detect_event() enforces require_live gating and user_can_view_tickets — the presale layer permission checking is inline in a utility function rather than in a mixin, making it harder to audit auth coverage."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "authorization_consistency": {
+      "strengths": [
+        "Control panel views consistently apply EventPermissionRequiredMixin, OrganizerPermissionRequiredMixin, or AdministratorPermissionRequiredMixin — the three permission tiers are clearly defined and uniformly enforced.",
+        "All admin-area views (AdminDashboard, VoucherList, SystemConfigView, etc.) use AdministratorPermissionRequiredMixin without exception.",
+        "The checkin list exporter boundary delegates access control to the view layer, consistent with other exporters.",
+        "New submission favourite API endpoints (favourites_view, favourite_view, favourites_merge_view) are consistently protected with both @permission_classes([IsAuthenticated]) and explicit has_perm checks.",
+        "Permission string constants ('can_view_orders', 'can_change_event_settings', etc.) are used consistently as string literals with no apparent magic-literal divergence across the control layer."
+      ],
+      "issue_character": "The main issues are in the API layer: CreateEventView reimplements JWT authentication manually while bypassing DRF's authentication pipeline (permission_classes = [], authentication_classes = []), and the deprecated UserFavouriteView does the same — creating an inconsistent authentication boundary where some sibling endpoints use standard DRF permission classes and others use custom in-handler token parsing.",
+      "score_rationale": "The codebase scores below adequate (70) on authorization consistency. The control panel permission tier is applied uniformly and is a strength. The drag comes from the API layer, where two endpoints (CreateEventView and UserFavouriteView) bypass the standard DRF authentication pipeline with custom JWT handling and empty permission_classes — inconsistent with sibling endpoints that use ApiAccessRequiredPermission and EventPermissions. The admin mode bypass in ActionFromUrl also lacks audit logging. These are genuine authorization consistency defects, not just style divergences."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "ac-01",
+      "summary": "CreateEventView disables DRF authentication and reimplements JWT validation inline",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "authentication_classes = []  # disables authentication",
+        "permission_classes = []",
+        "get_payload_from_token() manually extracts the Authorization header, calls jwt.decode() with settings.SECRET_KEY, and raises AuthenticationFailed on error — reimplementing what DRF's authentication pipeline provides.",
+        "The sibling EventView uses 'permission_classes = [ApiAccessRequiredPermission & EventPermissions]' — the inconsistency is visible within the same file."
+      ],
+      "suggestion": "Create a dedicated DRF authentication class (e.g., EventyayVideoJWTAuthentication) that validates the video JWT token using settings.SECRET_KEY and returns the payload as request.auth; apply it to CreateEventView via authentication_classes and add a corresponding permission class that checks has_permission payload.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "inconsistent_auth_boundary"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "ac-02",
+      "summary": "Deprecated UserFavouriteView uses permission_classes = [] with manual bearer-token parsing instead of standard DRF auth",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "permission_classes = [] on UserFavouriteView.",
+        "get_uid_from_token() extracts bearer token and calls event.decode_token() inline in the view handler.",
+        "The endpoint is marked deprecated but is still active and routes are still registered."
+      ],
+      "suggestion": "Either remove the endpoint entirely (callers should use the new per-submission favourite API) or convert it to use the standard DRF authentication pipeline before doing so; the deprecation comment suggests removal is the correct path.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "inconsistent_auth_boundary"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "ac-03",
+      "summary": "Admin mode bypass in ActionFromUrl._check_permission has no audit logging",
+      "related_files": ["app/eventyay/common/views/mixins.py"],
+      "evidence": [
+        "ActionFromUrl._check_permission() returns True immediately when is_admin_mode_active(request) is True, bypassing all permission checks.",
+        "No log entry, audit trail, or request annotation records that the admin bypass was invoked for a specific action."
+      ],
+      "suggestion": "Add an audit log entry (e.g., via the existing LogEntry mechanism) when the admin bypass path is taken in _check_permission(), capturing the bypassed permission, the user, and the object being accessed.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "admin_bypass_audit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "ac-04",
+      "summary": "EventThemeView and CustomerOrderCheckView have permission_classes = [] without explanatory comments",
+      "related_files": ["app/eventyay/api/views/event.py"],
+      "evidence": [
+        "EventThemeView: 'permission_classes = []' — returns event theme config; no comment explains why this is intentionally public.",
+        "CustomerOrderCheckView: 'authentication_classes = ()' and 'permission_classes = ()' — the endpoint returns 501 but is still reachable unauthenticated.",
+        "InitializeView in device.py has empty permission_classes but a clear rationale (one-time token-based device registration)."
+      ],
+      "suggestion": "Add an inline comment to EventThemeView explaining that theme data is intentionally public (matching the public event page). For CustomerOrderCheckView, either add a note explaining the disabled state or remove the view and its URL registration entirely.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "JWT-based video system integration was implemented as a separate authentication path without wrapping it in DRF's standard authentication pipeline, leading to manual token parsing in view handlers.",
+      "The deprecated UserFavouriteView was not removed when the new per-submission API was added, leaving an unauthenticated endpoint active."
+    ],
+    "likely_symptoms": [
+      "ac-04 (EventThemeView undocumented open access) is a symptom of the pattern where public endpoints are not distinguished from incorrectly-open endpoints by documentation alone."
+    ],
+    "possible_false_positives": [
+      "CustomerOrderCheckView is disabled (returns 501) so the empty permission_classes has no practical security impact currently — the issue is about consistency and future risk if the endpoint is re-enabled.",
+      "InitializeView empty auth is intentional by design for device pairing — correctly excluded from issues per the dimension skip rules for one-time-token endpoints."
+    ]
+  }
+}

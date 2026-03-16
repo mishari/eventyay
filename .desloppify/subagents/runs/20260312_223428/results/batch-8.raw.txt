@@ -1,0 +1,156 @@
+{
+  "batch": "low_level_elegance",
+  "batch_index": 8,
+  "assessments": {
+    "low_level_elegance": 62.0
+  },
+  "dimension_notes": {
+    "low_level_elegance": {
+      "evidence": [
+        "OrderChangeManager uses a command-object pattern (namedtuple operations + single commit()) that bounds mutation explicitly and makes rollback coherent",
+        "CartManager mirrors the same pattern, giving internal consistency across the two heaviest service classes",
+        "View classes consistently use @cached_property for lazy reads, keeping state mutation out of property getters",
+        "Private _check_* decomposition in OrderChangeManager (e.g. _check_quotas, _check_seats, _check_complete_cancel, _check_paid_price_change) creates proportionate extraction rather than one massive method",
+        "_perform_operations() in OrderChangeManager is a ~293-line if/elif chain inlining log+mutate logic for each operation type directly instead of delegating to per-operation handlers",
+        "OrderStartRefund.choose_form() (control/views/orders.py ~950-1280) has five near-identical Decimal-parse + validate + append blocks for manual, giftcard, offsetting, provider-specific, and payment-specific refund channels",
+        "_cancel_order() in services/orders.py duplicates the voucher-revocation loop and assign_ticket_secret calls in both the cancellation_fee branch and the else branch",
+        "_check_positions() (services/orders.py lines 602-889) is a single ~270-line loop with nested subevent, voucher-budget, seat, and quota checks all inlined — mixing multiple distinct validation concerns in one flat body",
+        "completed_payment_sum in OrderChangeManager has a duplicate entry: OrderRefund.REFUND_STATE_DONE appears twice in the filter state tuple (lines 2340-2344 of services/orders.py)",
+        "OrderExtend.dispatch and OrderReactivate.dispatch call super().dispatch(request, *kwargs, **kwargs) — *kwargs unpacks dict keys as positional args, a copy-paste defect repeated in two sibling classes"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "low_level_elegance": {
+      "strengths": [
+        "OrderChangeManager and CartManager both use the command-object pattern (accumulated namedtuple operations committed atomically) — mutation is explicit, bounded, and reversible",
+        "@cached_property is applied consistently across view classes to lazy-read expensive lookups without recomputation",
+        "Service functions like reactivate_order, approve_order, deny_order are proportionate — each does one well-named thing with clear transaction scoping",
+        "Private _check_* helpers inside OrderChangeManager are balanced extractions: each validates one concern and raises OrderError at a named boundary",
+        "log_action calls consistently supply structured data dicts, making side effects explicit and readable"
+      ],
+      "issue_character": "The dominant issue is intra-function scale: the codebase's heaviest logic is written as long flat bodies (a 293-line dispatch chain, a 270-line validation loop, a 300-line refund-channel accumulator) where distinct concerns are interspersed rather than extracted, making individual functions harder to follow than the underlying domain complexity warrants. A secondary issue is copy-paste duplication of repeated structural blocks (refund channel parsing, voucher-revocation in two cancel paths, a dispatch bug cloned into two sibling classes).",
+      "score_rationale": "The command-object services and @cached_property conventions show genuine craft. However, a developer landing on _perform_operations(), _check_positions(), or OrderStartRefund.choose_form() must read a long flat body to understand what is actually happening, because operations that have natural names (apply_product_operation, check_subevent_presale, parse_manual_refund_channel) are inlined as anonymous elif blocks or copy-pasted fragments. The duplicate REFUND_STATE_DONE entry and the *kwargs dispatch bug are self-contained defects on top of the broader craft gap. This maps to the 60-70 range: significant recurring drag — a developer regularly hits functions that are harder to follow than the domain justifies — but not so pervasive that every function is opaque."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "perform_operations_monolith",
+      "summary": "OrderChangeManager._perform_operations is a 293-line if/elif dispatch chain with inlined log+mutate blocks for each operation type",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "_perform_operations() (lines ~1921-2213) contains one large elif branch per operation type (ProductOperation, SeatOperation, SubeventOperation, AddFeeOperation, FeeValueOperation, PriceOperation, TaxRuleOperation, CancelFeeOperation, CancelOperation, AddOperation, SplitOperation, RegenerateSecretOperation), each inlining order.log_action + field mutations + save",
+        "The natural abstraction — 'apply this operation to the order' — has a name for each operation type (ProductOperation, etc.) but the execution logic lives in an anonymous elif rather than a method on the namedtuple or a dedicated handler"
+      ],
+      "suggestion": "Extract a handler per operation type: e.g. _apply_product_operation(op), _apply_seat_operation(op), etc. Each handler performs the log_action + mutation + save for that type. _perform_operations() becomes a short dispatch loop over self._operations calling the appropriate handler. This reduces the function from ~293 lines to ~20 lines and makes each operation's logic independently readable and testable.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "flat_operation_dispatch"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "refund_channel_parse_repetition",
+      "summary": "OrderStartRefund.choose_form() repeats the same Decimal-parse + validate + append-refund block five times for each refund channel",
+      "related_files": [
+        "app/eventyay/control/views/orders.py"
+      ],
+      "evidence": [
+        "Lines ~950-1150 in orders.py: manual_value, giftcard_value, offsetting_value, prof_value, and per-payment value all follow the same pattern: read POST field, sanitize separators, parse Decimal, catch DecimalException, set is_valid=False, then if value > 0 append an OrderRefund to the list",
+        "The structure of each block is identical modulo the provider-specific fields — the pattern is never extracted into a helper"
+      ],
+      "suggestion": "Extract a helper _parse_refund_amount(post_key, label) -> Optional[Decimal] that reads, sanitizes, and parses the amount, appending an error message and returning None on failure. Then reduce each channel block to: `value = self._parse_refund_amount(...)` followed by channel-specific refund creation if value is not None.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "flat_operation_dispatch"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "cancel_order_duplicated_voucher_ticket_logic",
+      "summary": "_cancel_order() duplicates voucher-revocation and ticket-secret invalidation across its cancellation_fee and non-cancellation_fee branches",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "In the cancellation_fee branch (lines ~462-516): positions are iterated, vouchers are updated with Greatest(0, F('redeemed') - 1), and assign_ticket_secret is called with force_invalidate=False, save=False per position",
+        "In the else branch (lines ~502-516): the same loop over positions runs, calling assign_ticket_secret with force_invalidate=False, save=True and updating vouchers with the same Greatest(0, F('redeemed') - 1) expression",
+        "The shared structure is identical; only the save argument and the cancelled flag semantics differ"
+      ],
+      "suggestion": "Extract a helper _revoke_positions(positions, save_immediately=True) that performs the voucher-redeemed decrement and assign_ticket_secret call in one place. Each branch calls this helper with the appropriate save flag, eliminating the duplicate loop.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "flat_operation_dispatch"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "check_positions_flat_loop",
+      "summary": "_check_positions() is a ~270-line loop mixing subevent, voucher-budget, seat, product-availability, and quota validations in a single flat body",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "_check_positions() (lines 602-889) handles in a single for loop: product availability checks, per-product max checks, voucher redemption count, voucher budget tracking, subevent presale start/end checks, payment term last date checks, seat validity, hide-without-voucher, seat availability, quota checks, and price recalculation",
+        "Each concern has its own local `continue` or `break` exit, but the concerns are not grouped or named — a reader must scan the full 270 lines to understand what the function checks"
+      ],
+      "suggestion": "Decompose into a pipeline of named sub-checks that each receive the cart position and return early if the position should be deleted. For example: _check_cp_product_availability(cp), _check_cp_max_per_product(cp, products_seen), _check_cp_voucher(cp, v_budget, now_dt), _check_cp_subevent_dates(cp, now_dt), _check_cp_seat(cp, seats_seen), _check_cp_quota(cp, now_dt). _check_positions then becomes a loop that calls these helpers in sequence and collects the first error. This does not need to change behavior — only structure.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "flat_operation_dispatch"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "completed_payment_sum_duplicate_state",
+      "summary": "completed_payment_sum filter includes REFUND_STATE_DONE twice in its state tuple, making the intent ambiguous",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "Lines 2338-2344: state__in=(OrderRefund.REFUND_STATE_DONE, OrderRefund.REFUND_STATE_TRANSIT, OrderRefund.REFUND_STATE_DONE) — the terminal state appears twice",
+        "Django deduplicates the IN clause in SQL so this has no runtime effect, but signals either a copy-paste error (REFUND_STATE_EXTERNAL was intended) or leftover dead edit"
+      ],
+      "suggestion": "Remove the duplicate REFUND_STATE_DONE. If REFUND_STATE_EXTERNAL was intended for the third entry (consistent with how the control view OrderRefundCancel handles the three transit states), add it. Otherwise simply remove the second DONE: state__in=(OrderRefund.REFUND_STATE_DONE, OrderRefund.REFUND_STATE_TRANSIT).",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "check_paid_price_change_duplicated_cancel_block",
+      "summary": "_check_paid_price_change() has two elif branches that perform identical payment-cancellation try/except logic in consecutive blocks",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "Lines 1819-1846: elif order.status in (PENDING, EXPIRED) and _totaldiff < 0 — contains a try/with/cancel_payment/log_action except block",
+        "Lines 1847-1871: elif order.status in (PENDING, EXPIRED) and _totaldiff > 0 — contains an identical try/with/cancel_payment/log_action except block",
+        "The two blocks are structurally identical; only the pre-condition differs. The cancel-open-payment logic is the same in both."
+      ],
+      "suggestion": "Extract _cancel_open_payment(reason_log_extra=None) as a private method containing the try/atomic/cancel_payment/log_action block. Both elif branches call this helper after their pre-condition check, eliminating the duplicate ~25-line block.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "flat_operation_dispatch"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The dominant pattern is 'accumulate everything in one long function body rather than extract per-concern helpers' — this affects _perform_operations, _check_positions, and choose_form in unrelated subsystems, suggesting a project-wide habit of deferring extraction",
+      "The duplication in _cancel_order and _check_paid_price_change suggests changes were made by copy-paste rather than refactoring the shared structure first"
+    ],
+    "likely_symptoms": [
+      "perform_operations_monolith",
+      "check_positions_flat_loop",
+      "refund_channel_parse_repetition"
+    ],
+    "possible_false_positives": []
+  }
+}

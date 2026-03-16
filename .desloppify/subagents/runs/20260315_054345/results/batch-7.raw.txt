@@ -1,0 +1,139 @@
+{
+  "batch": "dependency_health",
+  "batch_index": 7,
+  "assessments": {
+    "dependency_health": 55.0
+  },
+  "dimension_notes": {
+    "dependency_health": {
+      "evidence": [
+        "pyproject.toml: both bleach and nh3 are listed as production dependencies and both are used for HTML sanitization — bleach in base/templatetags/rich_text.py, nh3 in base/invoice.py, plugins/checkinlists/exporters.py, control/logdisplay.py, orga/views/mails.py, and plugins/sendmail/views.py. The rich_text.py file contains three 'TODO: Remove bleach import' comments indicating awareness but no action.",
+        "pyproject.toml: pandas (heavy analytics dependency, ~50MB+) is listed as a production dependency. Searching the codebase shows pandas only used in the analytics/graphs area. This is a heavy dependency for a light analytics surface.",
+        "pyproject.toml: matplotlib is listed alongside pandas — both pulled as top-level production deps for chart generation in the analytics feature.",
+        "pyproject.toml: pdf2image and pdfrw are both listed — pdfrw is used in features/analytics/graphs/utils.py, and pdf2image is likely used in ticket PDF handling. Two PDF manipulation libraries with different purposes.",
+        "pyproject.toml: orjson and standard json are both used — orjson for performance-sensitive paths, json stdlib for general use. This is a reasonable dual-use pattern.",
+        "pyproject.toml: pycountry and django-countries both provide country data — django-countries is a Django form/model integration while pycountry provides raw ISO data access; there is some overlap in country lookup functionality.",
+        "pyproject.toml: all dependencies are specified with >= (floor) pins without upper bounds or lock file constraints visible in pyproject.toml itself — uv.lock exists but pyproject.toml alone allows any future breaking version.",
+        "pyproject.toml: vat-moss-forked is pinned with a comment 'This library prevents us from being compatible with Python v3.13+' — known blocking dependency acknowledged but not resolved.",
+        "pyproject.toml: git+https:// dependencies for eventyay-paypal, eventyay-stripe, eventyay-bitpay, and exhibition — all referencing @main branch pins with no commit SHA, meaning builds are not reproducible without the uv.lock.",
+        "pyproject.toml: requires-python = '>=3.12, <3.13' — hard Python version ceiling imposed by vat-moss-forked, acknowledged in comments.",
+        "pyproject.toml: dj-static is listed (legacy static file serving for Heroku-era deployments) — likely superseded by whitenoise or gunicorn static serving in production.",
+        "pyproject.toml: responses (HTTP mock library, typically test-only) appears in production dependencies rather than test group."
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "dependency_health": {
+      "strengths": [
+        "uv.lock file exists providing a reproducible lock for actual builds despite loose pyproject.toml pins.",
+        "Dev, docs, lint, and test dependency groups are cleanly separated in pyproject.toml dependency-groups.",
+        "Core framework choices (Django 5.2, DRF, Celery, Channels, psycopg3) are current, well-maintained, and non-overlapping.",
+        "Payment plugins are factored out as separate installable packages rather than bundled, reducing core bloat.",
+        "The vat-moss-forked blocking issue is explicitly commented, showing awareness of the constraint."
+      ],
+      "issue_character": "The primary issues are dual-library redundancy for the same purpose (bleach + nh3 for HTML sanitization) and heavy production dependencies (pandas, matplotlib) whose scope justification is unclear from the package manifest alone.",
+      "score_rationale": "The codebase lands below 70 (adequate) for dependency health. The bleach+nh3 dual-sanitizer situation has explicit TODO comments acknowledging the debt but no remediation, indicating known redundancy. The responses mock library in production deps, git @main pins without commit SHAs, and the Python version ceiling imposed by vat-moss-forked are concrete issues. The overall picture is a moderately crowded dependency manifest (~200 production deps) with some redundancy but no catastrophic circular dependency or version conflict evidence — closer to 55 than 50, as fundamentals like the lock file and group separation are in place."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "dependency_health",
+      "identifier": "dh-01",
+      "summary": "Both bleach and nh3 are production dependencies for HTML sanitization with acknowledged migration debt",
+      "related_files": [
+        "app/pyproject.toml",
+        "app/eventyay/base/templatetags/rich_text.py",
+        "app/eventyay/base/invoice.py",
+        "app/eventyay/plugins/checkinlists/exporters.py"
+      ],
+      "evidence": [
+        "rich_text.py contains three consecutive '# TODO: Remove bleach import' comments at the top of the file.",
+        "bleach is used in rich_text.py for linkification and markdown processing.",
+        "nh3 is used for sanitization in invoice.py, exporters.py, logdisplay.py, mails.py, sendmail/views.py, and pages.py.",
+        "Both libraries serve HTML sanitization with partially overlapping purposes."
+      ],
+      "suggestion": "Complete the bleach-to-nh3 migration that the TODO comments signal: port the linkification logic in rich_text.py from bleach to nh3 or a pure Python linkifier, then remove bleach from pyproject.toml.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "incomplete_migration"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dh-02",
+      "summary": "responses (HTTP mock library) appears in production dependencies rather than test group",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "responses>=0.25.5 is listed in the top-level [project].dependencies array, not in [dependency-groups].test.",
+        "responses is an HTTP mocking library designed for test environments that intercepts requests calls."
+      ],
+      "suggestion": "Move responses to [dependency-groups].test in pyproject.toml; verify no production code imports it and remove any such import if found.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dh-03",
+      "summary": "Four git @main branch dependencies without commit SHA pins produce non-reproducible builds",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "eventyay-paypal @ git+https://github.com/fossasia/eventyay-paypal.git@main",
+        "eventyay-stripe @ git+https://github.com/fossasia/eventyay-stripe.git@main",
+        "eventyay-bitpay @ git+https://github.com/fossasia/eventyay-bitpay.git@main",
+        "exhibition @ git+https://github.com/fossasia/eventyay-exhibition.git@main",
+        "All four reference the HEAD of the main branch with no commit SHA, making pyproject.toml alone insufficient for reproducibility."
+      ],
+      "suggestion": "Pin each git dependency to a specific commit SHA (e.g., @main#<sha>) or publish these packages to PyPI with versioned releases so they can be pinned by version number.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dh-04",
+      "summary": "vat-moss-forked blocks Python 3.13+ upgrade and is unresolved",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "requires-python = '>=3.12, <3.13' ceiling exists.",
+        "Comment: '# This library prevents us from being compatible with Python v3.13+.'",
+        "vat-moss-forked>=2020.3.20.0.11.0 — the forked version dates from 2020; upstream vat-moss is unmaintained."
+      ],
+      "suggestion": "Audit usage of vat-moss-forked in the codebase; consider replacing with pyvat (also listed in deps) which is actively maintained and compatible with newer Python versions, or inline the specific VAT number validation logic used.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dh-05",
+      "summary": "pandas and matplotlib are heavy production dependencies for a narrow analytics surface",
+      "related_files": ["app/pyproject.toml", "app/eventyay/features/analytics/graphs/utils.py"],
+      "evidence": [
+        "pandas>=2.3.3 and matplotlib>=3.10.8 are top-level production dependencies.",
+        "features/analytics/graphs/utils.py contains the main analytics charting code.",
+        "pandas and matplotlib together add significant install weight (60MB+ binary footprint) for what appears to be a feature-flaggable analytics module."
+      ],
+      "suggestion": "If the analytics feature is optional, consider making pandas/matplotlib optional extras or moving them to a conditional install group; alternatively, evaluate whether lighter charting alternatives (e.g., direct reportlab charts) could replace matplotlib for the specific charts rendered.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Incremental integration without cleanup: bleach was the original sanitizer; nh3 was added as a replacement but bleach was never removed.",
+      "Plugin packages developed as git repositories without versioned releases, making reproducibility dependent entirely on the lock file."
+    ],
+    "likely_symptoms": [
+      "dh-01 (bleach/nh3 dual dep) is a symptom of an incomplete migration tracked by TODO comments.",
+      "dh-03 (git @main pins) is symptomatic of plugin packages that haven't yet been published to PyPI."
+    ],
+    "possible_false_positives": [
+      "pycountry + django-countries overlap: django-countries provides form/model integration while pycountry provides raw lookup — the use cases are sufficiently distinct that this is likely intentional."
+    ]
+  }
+}

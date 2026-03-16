@@ -1,0 +1,140 @@
+{
+  "batch": "abstraction_fitness",
+  "batch_index": 6,
+  "assessments": {
+    "abstraction_fitness": 62.0
+  },
+  "dimension_notes": {
+    "abstraction_fitness": {
+      "evidence": [
+        "app/eventyay/agenda/views/utils.py: parse_ics_token() is a one-liner wrapper that calls load_starred_ics_token() and discards its second return value — adds no policy beyond forwarding.",
+        "app/eventyay/base/services/announcement.py: create_announcement(), get_announcement(), get_announcements(), update_announcement() are thin async wrappers over ORM calls with minimal logic — the announcement business rules (allowed_states, is_visible) live on the model. The wrapper layer adds database_sync_to_async decoration but otherwise forwards arguments verbatim.",
+        "app/eventyay/base/auth.py: BaseAuthBackend defines 5 methods, all returning None or raising NotImplementedError — a pure abstract base with no enforced extension contract beyond convention.",
+        "app/eventyay/presale/utils.py: _event_view() nests a closure inside another closure (event_view_wrapper inside _event_view), adding 2 wrapper hops before reaching func. The public event_view() is a deprecated noop that just returns its argument.",
+        "app/eventyay/common/views/helpers.py: get_static() is a tiny 5-line helper that forwards a path + content_type to FileResponse — duplicates boilerplate that Django's static file serving already handles for dev.",
+        "app/eventyay/base/models/__init__.py: flat re-export of 100+ symbols from sub-modules, creating a large monolithic public surface (expected as a facade pattern, but still creates a hub).",
+        "app/eventyay/base/services/cart.py: imports from eventyay.base.services.checkin._save_answers — a private symbol leaking across service boundary.",
+        "app/eventyay/base/payment.py: BasePaymentProvider imports from eventyay.presale.views (cart_session, get_or_create_cart_id) — reversed dependency direction from a base module into a presale view layer.",
+        "app/eventyay/eventyay_common/utils.py: EventCreatedFor StrEnum defined here alongside utility functions for JWT/video generation — mixing domain constants with utility functions in a single utils module.",
+        "Widespread utils.py pattern: agenda, presale, event, schedule, social, eventyay_common all have utils.py catch-all modules rather than bounded domain packages."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {
+        "abstraction_leverage": 58.0,
+        "indirection_cost": 55.0,
+        "interface_honesty": 65.0,
+        "delegation_density": 60.0,
+        "definition_directness": 68.0,
+        "type_discipline": 62.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "abstraction_fitness": {
+      "strengths": [
+        "Domain services (orders, checkin, cart, mail) are substantive — they contain real logic rather than being pass-through wrappers.",
+        "build_public_schedule_exporters() in agenda/views/utils.py is a well-scoped function that centralizes exporter discovery and serialization for two UIs.",
+        "BasePaymentProvider is a legitimate extension point used by multiple payment plugins, justifying its abstract surface.",
+        "The common/views/mixins.py mixin hierarchy (ActionFromUrl, Sortable) correctly factors shared behavior without redundant delegation.",
+        "conditional_cache_page in common/views/cache.py is a value-add wrapper that adds ETag logic on top of Django's cache_page — not a mere forwarder."
+      ],
+      "issue_character": "The primary pattern is proliferation of flat utils.py catch-all modules across every subsystem, combined with thin service wrappers and argument-forwarding helpers that add a hop without adding policy.",
+      "score_rationale": "The codebase earns a mid-range score because core service modules (orders, cart, mail) have genuine logic and the major abstractions (BasePaymentProvider, view mixins) are justified. However, the utils.py proliferation across 6+ packages, the parse_ics_token one-liner, the deprecated noop event_view wrapper, and the BaseAuthBackend with all-None defaults show systematic indirection creep. The reversed dependency from base.payment into presale.views is a cross-layer coupling that indicates a missing bounded package. Relative to a well-structured Django codebase these issues are moderate — not pervasive enough to warrant a very low score, but too frequent to score above 70."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "parse_ics_token_wrapper",
+      "summary": "parse_ics_token is a trivial one-liner forwarding to load_starred_ics_token, adding no policy",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "parse_ics_token(token, event=event) calls load_starred_ics_token(token, event=event) and returns only user_id, discarding expiry_dt without documentation"
+      ],
+      "suggestion": "Inline parse_ics_token at each call site or rename load_starred_ics_token to parse_ics_token and add a helper to get the tuple when expiry is needed.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "base_payment_reverse_dep",
+      "summary": "base/payment.py imports from presale.views, creating an upward layer dependency",
+      "related_files": ["app/eventyay/base/payment.py"],
+      "evidence": [
+        "from eventyay.presale.views import get_cart, get_cart_total",
+        "from eventyay.presale.views.cart import cart_session, get_or_create_cart_id"
+      ],
+      "suggestion": "Extract cart query helpers into eventyay.base.services.cart so that base.payment can import from the service layer without depending on a view layer.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "utils_module_proliferation",
+      "summary": "Generic utils.py catch-all modules exist across 6+ packages, mixing domain constants with utility functions",
+      "related_files": [
+        "app/eventyay/agenda/views/utils.py",
+        "app/eventyay/presale/utils.py",
+        "app/eventyay/eventyay_common/utils.py",
+        "app/eventyay/event/utils.py",
+        "app/eventyay/schedule/utils.py",
+        "app/eventyay/features/social/utils.py"
+      ],
+      "evidence": [
+        "eventyay_common/utils.py mixes EventCreatedFor enum, JWT token generation, and subevent lookup in one flat module",
+        "agenda/views/utils.py mixes ICS token logic, exporter discovery, and HTTP response helpers"
+      ],
+      "suggestion": "Extract bounded sub-modules per responsibility (e.g., token.py, exporters.py) within each package to replace generic utils.py catch-alls.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "announcement_service_thin_wrappers",
+      "summary": "announcement service functions are async wrappers with no added policy beyond database_sync_to_async",
+      "related_files": ["app/eventyay/base/services/announcement.py"],
+      "evidence": [
+        "create_announcement(**kwargs) is @database_sync_to_async and calls Announcement.objects.create(**{k:v for...}).serialize_public()",
+        "get_announcement(pk, event) is @database_sync_to_async and calls Announcement.objects.get(pk=pk, event=event).serialize_public()"
+      ],
+      "suggestion": "Either inline these wrappers at call sites in the consumer layer or consolidate into a single AnnouncementService class with explicit methods that document intent.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "checkin_private_symbol_leak",
+      "summary": "cart service imports private _save_answers from checkin service, violating service boundary",
+      "related_files": [
+        "app/eventyay/base/services/cart.py",
+        "app/eventyay/base/services/checkin.py"
+      ],
+      "evidence": [
+        "from eventyay.base.services.checkin import _save_answers  (underscore-prefixed symbol)"
+      ],
+      "suggestion": "Promote _save_answers to a public function or extract the shared logic into a common answers module that both cart and checkin services import.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Historical merger of two codebases (pretix ticketing + pretalx talks) created redundant utility layers that were not rationalized post-merge",
+      "Absence of a bounded-context boundary rule allows base.payment to reach into presale.views"
+    ],
+    "likely_symptoms": [
+      "utils_module_proliferation — symptom of missing domain decomposition rather than a standalone issue",
+      "parse_ics_token_wrapper — symptom of incremental helper extraction without cleanup"
+    ],
+    "possible_false_positives": [
+      "BaseAuthBackend abstract class — plugin extension point, justified by settings-driven backend loading"
+    ]
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "batch": "convention_outlier",
+  "batch_index": 3,
+  "assessments": {
+    "convention_outlier": 58.0
+  },
+  "dimension_notes": {
+    "convention_outlier": {
+      "evidence": [
+        "app/eventyay/control/views/__init__.py: contains both utility classes (PaginationMixin, LargeResultSetPage, LargeResultSetPaginator) and a large re-export block importing 25+ view classes from admin_views.py with an explicit __all__; sibling view modules (checkin.py, waitinglist.py, product.py, event.py) do not re-export anything from __init__ — this is an inconsistent pattern in one module only",
+        "app/eventyay/api/views/version.py: VersionView.get() returns keys 'pretix' and 'pretix_numeric' in a product called eventyay — the API response schema uses the upstream fork's product name, inconsistent with the rest of the api surface which uses eventyay naming",
+        "app/eventyay/base/models/base.py: LoggingMixin; app/eventyay/base/models/mixins.py: LogMixin — two sibling mixins in the same package implementing the same log_action contract but with different names, different signatures (LogMixin adds log_prefix, log_parent), and different error handling",
+        "app/eventyay/base/models/__init__.py exports `PretalxModel` and `LogMixin` using one naming convention alongside `LoggedModel`, `LoggingMixin` — mixed naming schemes (Pretalx prefix, Logged prefix, Log prefix) for the same concept",
+        "app/eventyay/common/views/cache.py defines conditional_cache_page, etag_cache_page, patched_response, should_cache — these are standalone functions; app/eventyay/common/views/redirect.py defines redirect_view, safelink — also standalone functions. Both are consistent with the common views pattern.",
+        "app/eventyay/control/forms/organizer_forms/ subdirectory uses individual files per form (base_organizer_footer_link_form_set.py, event_meta_property_form.py, gate_form.py, gift_card_update_form.py, organizer_settings_form.py, web_hook_form.py) — one form per file, each naming a class. Sibling app/eventyay/control/forms/ files (checkin.py, orders.py, product.py, widgets.py) each contain multiple form classes. Inconsistent granularity.",
+        "app/eventyay/api/views/ sibling modules: some (mail.py, access_code.py, speaker.py, speaker_information.py, rooms.py) follow PretalxViewSetMixin; others (oauth.py, stripe.py, version.py, upload.py) are plain APIView subclasses or function-based views — the API views package mixes two structural patterns without separation",
+        "app/eventyay/agenda/views/ contains: feed.py (class-based Feed), widget.py (function-based views), featured.py (class-based), schedule.py (class-based) — mixed class-based/function-based without clear convention",
+        "app/eventyay/base/models/bbb.py, janus.py, turn.py, streaming.py — infrastructure server models living in the same package as business models (Order, Event, Submission) with no sub-grouping"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "convention_outlier": {
+      "strengths": [
+        "The api/views/ modules following PretalxViewSetMixin are internally consistent: each uses the same endpoint/search_fields/queryset pattern",
+        "base/models/ files consistently use one domain concept per file (one file for orders, one for products, etc.)",
+        "base/exporters/ files all follow BaseExporter subclass pattern consistently"
+      ],
+      "issue_character": "The dominant pattern of inconsistency is naming drift from the fork merge (Pretalx/pretix names appearing in eventyay code) and mixed structural conventions within sibling module groups — particularly in api/views/, control/forms/, and the base model mixin layer.",
+      "score_rationale": "This codebase scores slightly above mediocre (50). Most individual subsystems are internally consistent, but there are cross-cutting naming outliers (PretalxModel, pretix API response keys) and structural inconsistencies in api/views/ (mixing ViewSet-based and APIView/function-based patterns) and control/forms/ (different granularity between subdirectory and flat forms). These are impactful enough to impede navigation but not pervasive enough to score lower."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv_api_version_response_pretix_keys",
+      "summary": "VersionView returns API response keys named 'pretix' and 'pretix_numeric' in an eventyay product",
+      "related_files": [
+        "app/eventyay/api/views/version.py"
+      ],
+      "evidence": [
+        "Line 52-55: `return Response({'pretix': __version__, 'pretix_numeric': numeric_version(__version__)})`",
+        "The rest of the API surface uses eventyay naming conventions; this endpoint exposes upstream fork naming in the public API contract"
+      ],
+      "suggestion": "Rename the response keys to 'eventyay' and 'eventyay_numeric'. If backwards compatibility with existing clients is required, add both keys during a transition period.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv_control_views_init_reexport_island",
+      "summary": "control/views/__init__.py is the only views module in the codebase that mass-re-exports sibling view classes, creating a structural island",
+      "related_files": [
+        "app/eventyay/control/views/__init__.py"
+      ],
+      "evidence": [
+        "Lines 186-222: imports 25+ view classes from admin_views.py and lists them in __all__",
+        "No other app's views/__init__.py does this; agenda/views/__init__.py, api/views/__init__.py, cfp/views/__init__.py, orga/views/__init__.py are all empty",
+        "The __init__.py also contains actual view utility classes (PaginationMixin, LargeResultSetPage etc.) mixed with re-exports"
+      ],
+      "suggestion": "Remove the re-export block from control/views/__init__.py; let consumers import directly from admin_views.py. If backward compatibility is needed, document it explicitly. Separate the utility classes into their own file.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv_dual_logging_mixin_naming",
+      "summary": "LoggingMixin and LogMixin coexist in the same package with the same purpose but different names, creating naming inconsistency for a core pattern",
+      "related_files": [
+        "app/eventyay/base/models/base.py",
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/__init__.py"
+      ],
+      "evidence": [
+        "base/models/base.py: class LoggingMixin — provides log_action(), mixed into LoggedModel",
+        "base/models/mixins.py: class LogMixin — also provides log_action(), mixed into PretalxModel with log_prefix/log_parent extensions",
+        "Both are exported from __init__.py; no documentation distinguishes which to use when"
+      ],
+      "suggestion": "Pick one name (LogMixin or LoggingMixin) and consolidate. Document the log_prefix/log_parent extension if it needs to remain distinct. Remove the other class.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv_api_views_mixed_structural_patterns",
+      "summary": "api/views/ mixes PretalxViewSetMixin-based ViewSets with plain APIView subclasses and function-based views without any documented separation",
+      "related_files": [
+        "app/eventyay/api/views/mail.py",
+        "app/eventyay/api/views/access_code.py",
+        "app/eventyay/api/views/oauth.py",
+        "app/eventyay/api/views/stripe.py",
+        "app/eventyay/api/views/version.py",
+        "app/eventyay/api/views/upload.py"
+      ],
+      "evidence": [
+        "mail.py, access_code.py, speaker.py use PretalxViewSetMixin + ModelViewSet — consistent CRUD pattern",
+        "oauth.py subclasses BaseAuthorizationView, BaseTokenView — OAuth2 toolkit pattern",
+        "stripe.py is a csrf_exempt function-based webhook view",
+        "version.py uses plain APIView",
+        "upload.py uses plain APIView with FileUploadParser"
+      ],
+      "suggestion": "Group api/views/ modules into sub-packages: api/views/resources/ for ViewSet-based CRUD, api/views/auth/ for OAuth/authentication views, api/views/webhooks/ for inbound webhook handlers. The current flat directory makes the structural mixing invisible.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv_control_forms_granularity_inconsistency",
+      "summary": "control/forms/organizer_forms/ uses one-class-per-file while sibling control/forms/*.py files each contain multiple classes",
+      "related_files": [
+        "app/eventyay/control/forms/organizer_forms/base_organizer_footer_link_form_set.py",
+        "app/eventyay/control/forms/organizer_forms/gate_form.py",
+        "app/eventyay/control/forms/orders.py",
+        "app/eventyay/control/forms/product.py"
+      ],
+      "evidence": [
+        "organizer_forms/gate_form.py contains a single form class",
+        "organizer_forms/gift_card_update_form.py contains a single form class",
+        "control/forms/orders.py contains multiple form classes (OrderFilterForm, OrderTransitionForm, etc.)",
+        "control/forms/product.py contains multiple form classes (ProductForm, ProductVariationFormSet, etc.)",
+        "The two conventions coexist as siblings in control/forms/ without documented rationale"
+      ],
+      "suggestion": "Adopt a consistent convention: either aggregate related organizer forms into a single organizer_forms.py file (matching the sibling pattern), or split all form files to one-class-per-file (matching the organizer_forms/ subdirectory pattern). Document the rationale.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The codebase is a fork merge of pretix and pretalx; naming and structural conventions from both upstream projects coexist without a unification pass",
+      "The organizer_forms/ subdirectory was likely a later structural experiment that was not applied retroactively to the rest of control/forms/"
+    ],
+    "likely_symptoms": [
+      "conv_dual_logging_mixin_naming — symptom of the merge not consolidating equivalent classes from both codebases"
+    ],
+    "possible_false_positives": []
+  }
+}

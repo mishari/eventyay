@@ -1,0 +1,199 @@
+{
+  "batch": "package_organization",
+  "batch_index": 15,
+  "assessments": {
+    "package_organization": 52.0
+  },
+  "dimension_notes": {
+    "package_organization": {
+      "evidence": [
+        "app/eventyay/base/models/ contains 59 files (20420 LOC) in a single flat directory: bbb.py, billing.py, cfp.py, chat.py, checkin.py, devices.py, exhibitor.py, giftcards.py, invoices.py, janus.py, orders.py, poll.py, poster.py, review.py, room.py, roulette.py, seating.py, streaming.py, turn.py, world.py — spanning video infrastructure, ticketing, CFP, and messaging concerns with no subdirectory grouping",
+        "app/eventyay/base/ flat directory has 30 production files (9815 LOC) mixing email.py, invoice.py, payment.py, pdf.py, shredder.py, orderimport.py, exporter.py, signals.py, metrics.py, auth.py, channels.py, storage.py, tasks.py, ticketoutput.py, timeline.py, validators.py — unrelated concerns sharing one directory level",
+        "app/eventyay/base/services/ has 40 files (13412 LOC) in a flat layout mixing cart.py, bbb.py, janus.py, turn.py, roulette.py, chat.py, poll.py, poster.py, telemetry.py, exhibition.py, pricing.py, seating.py — video-platform services mixed with ticketing-domain services",
+        "world.py in base/models/ is not exported from __init__.py, imports from eventyay.core.permissions and eventyay.core.utils.json (a separate package boundary), and is only referenced by eventyay_common/ — it belongs closer to the core/ or eventyay_common/ domain, not in the ticketing-focused base/models/",
+        "Directory profile for base/ shows it is imported by base/exporters/ 14 times — the exporters/ subdirectory treats the parent as a library of utilities rather than a bounded domain package",
+        "app/eventyay/common/ has 28 files mixing auth.py, checks.py, enums.py, exceptions.py, exporter.py, image.py, language.py, log_display.py, mail.py, permissions.py, plugins.py while also containing subdirectories for forms/, views/, settings/, text/ — 'common' is a catch-all with no clear ownership boundary",
+        "app/eventyay/helpers/ has 34 files covering cache.py, compat.py, config.py, cookies.py, countries.py, database.py, daterange.py, escapejson.py, jwt_generate.py, jsonlogic.py, money.py, periodic.py, reportlab.py, security.py, stripe_utils.py, thumb.py, timezone.py, u2f.py — spanning security, payment, rendering, date math in one flat package called 'helpers'",
+        "Scanning the coupling matrix: base/ imports from base/models/ 37 times and is imported by base/exporters/ 14 times — indicating the flat base/ is being used as a shared library surface for its own subdirectories, blurring the inward dependency direction"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    }
+  },
+  "dimension_judgment": {
+    "package_organization": {
+      "strengths": [
+        "Domain-level apps (agenda/, cfp/, control/, presale/, schedule/) are cleanly separated into distinct top-level packages with their own views/, forms/ subdirectories — a developer navigating any one app knows where to look",
+        "The base/exporters/ and base/views/ subdirectories correctly isolate their cohesive concerns from the parent directory, showing the pattern is known",
+        "The services/ package exists as a distinct layer separate from models/ and views/, signaling awareness of layered architecture; the naming is consistent across the codebase",
+        "Django management commands are consistently placed in management/commands/ subdirectories throughout all apps, following framework convention predictably"
+      ],
+      "issue_character": "The problems are structural and systemic: the two most central packages in the codebase (base/models/ at 59 files and base/services/ at 40 files) are severely overloaded flat directories mixing unrelated domain concerns, and the base/ parent directory itself is a 30-file catch-all; these are not isolated outliers but the load-bearing center of the project.",
+      "score_rationale": "The codebase sits well below the 60-threshold anchor ('organization regularly obscures ownership; a developer must search rather than navigate'): a developer looking for video-infrastructure models (BBB, Janus, Turn, Streaming, World) has to scan through 59 sibling files to find them because they share the flat base/models/ directory with ticketing, CFP, and messaging models. The app-level separation (agenda/, cfp/, control/) is genuinely good and pushes the score above 40, but the central base/ subsystem — which is the most-imported part of the codebase — is a navigation obstacle at every layer (models, services, and the base directory itself). The score is 52 because the per-app structure is readable but the core shared layer, which every developer touches, requires searching rather than navigation."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "package_organization",
+      "identifier": "base_models_flat_overload",
+      "summary": "base/models/ contains 59 files mixing video, ticketing, CFP, messaging, and infrastructure models in a single flat directory",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/base/models/bbb.py",
+        "app/eventyay/base/models/janus.py",
+        "app/eventyay/base/models/turn.py",
+        "app/eventyay/base/models/streaming.py",
+        "app/eventyay/base/models/world.py",
+        "app/eventyay/base/models/orders.py",
+        "app/eventyay/base/models/checkin.py",
+        "app/eventyay/base/models/seating.py",
+        "app/eventyay/base/models/invoices.py",
+        "app/eventyay/base/models/giftcards.py",
+        "app/eventyay/base/models/vouchers.py",
+        "app/eventyay/base/models/billing.py",
+        "app/eventyay/base/models/cfp.py",
+        "app/eventyay/base/models/review.py",
+        "app/eventyay/base/models/submission.py",
+        "app/eventyay/base/models/track.py",
+        "app/eventyay/base/models/chat.py",
+        "app/eventyay/base/models/mail.py",
+        "app/eventyay/base/models/notifications.py",
+        "app/eventyay/base/models/poll.py",
+        "app/eventyay/base/models/room.py",
+        "app/eventyay/base/models/poster.py",
+        "app/eventyay/base/models/roulette.py"
+      ],
+      "evidence": [
+        "Directory profile: file_count=59, total_loc=20420, avg_fan_in=2.7 in a single flat directory with no subdomain grouping",
+        "Clear domain clusters exist but are co-mingled: video-infra (bbb.py, janus.py, turn.py, streaming.py, room.py, world.py), ticketing (orders.py, checkin.py, seating.py, invoices.py, giftcards.py, vouchers.py, billing.py, product.py, tax.py), CFP (cfp.py, review.py, submission.py, track.py, type.py), messaging (chat.py, mail.py, notifications.py)",
+        "world.py imports from eventyay.core.permissions and eventyay.core.utils.json and is not exported from __init__.py — it has no cohesion with the surrounding ticketing models",
+        "The __init__.py re-exports 100+ symbols requiring a developer to read all 59 files' positions to find where any model is defined"
+      ],
+      "suggestion": "Stage the reorganization in four steps: (1) Create subdirectories base/models/video/ (bbb.py, janus.py, turn.py, streaming.py, stream_schedule.py, room.py, roomquestion.py, roulette.py, poll.py, poster.py, world.py), base/models/ticketing/ (orders.py, checkin.py, seating.py, invoices.py, giftcards.py, vouchers.py, billing.py, product.py, tax.py, waitinglist.py, cart implied via orders), base/models/cfp/ (cfp.py, review.py, submission.py, track.py, type.py, slot.py, schedule.py, question.py, resource.py, feedback.py), base/models/messaging/ (chat.py, mail.py, notifications.py, announcement.py). (2) Move files with `git mv`, update internal relative imports within each cluster. (3) Update base/models/__init__.py to import from subpackages (e.g., `from .video import BBBServer, JanusServer, Room`). (4) Validate with `python manage.py check --deploy` and run the test suite to catch broken imports. world.py should additionally be moved to eventyay_common/models/ since it is only referenced from eventyay_common/.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_flat_overload"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "base_services_flat_overload",
+      "summary": "base/services/ contains 40 files mixing video-platform services (bbb, janus, turn, roulette, chat, poll, poster) with ticketing services (cart, orders, pricing, seating, vouchers) in a single flat directory",
+      "related_files": [
+        "app/eventyay/base/services/__init__.py",
+        "app/eventyay/base/services/bbb.py",
+        "app/eventyay/base/services/janus.py",
+        "app/eventyay/base/services/turn.py",
+        "app/eventyay/base/services/roulette.py",
+        "app/eventyay/base/services/chat.py",
+        "app/eventyay/base/services/poll.py",
+        "app/eventyay/base/services/poster.py",
+        "app/eventyay/base/services/cart.py",
+        "app/eventyay/base/services/orders.py",
+        "app/eventyay/base/services/pricing.py",
+        "app/eventyay/base/services/seating.py",
+        "app/eventyay/base/services/vouchers.py",
+        "app/eventyay/base/services/announcement.py",
+        "app/eventyay/base/services/auth.py"
+      ],
+      "evidence": [
+        "Directory profile: file_count=40, total_loc=13412 in a flat layout; avg_fan_in=0.3 indicating most service files are self-contained and not widely shared — they could be co-located with the domain packages they serve",
+        "auth.py (session cleanup via StaffSession) belongs to authentication concerns, not mixed with cart.py and roulette.py; announcement.py belongs to messaging/notifications cluster",
+        "Distinct clusters: video-platform services (bbb, janus, turn, roulette, chat, poll, poster, reactions, room, streaming-related), ticketing services (cart, orders, pricing, seating, vouchers, waitinglist, quotas, invoices), cross-cutting (locking, tasks, export, stats, telemetry, update_check)"
+      ],
+      "suggestion": "Mirror the same subdomain structure applied to models/: create base/services/video/ for bbb, janus, turn, roulette, chat, poll, poster, reactions, room; create base/services/ticketing/ for cart, orders, pricing, seating, vouchers, waitinglist, quotas, invoices; retain locking.py, tasks.py, stats.py, telemetry.py, update_check.py, export.py at the services/ level as shared infrastructure. Move files with `git mv`, update imports, then run `python manage.py check` and the full test suite.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_flat_overload"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "base_parent_flat_overload",
+      "summary": "app/eventyay/base/ root has 30 mixed-concern files (email.py, invoice.py, payment.py, pdf.py, shredder.py, orderimport.py, exporter.py, metrics.py, auth.py, channels.py) without subdirectory grouping",
+      "related_files": [
+        "app/eventyay/base/admin.py",
+        "app/eventyay/base/auth.py",
+        "app/eventyay/base/channels.py",
+        "app/eventyay/base/email.py",
+        "app/eventyay/base/exporter.py",
+        "app/eventyay/base/invoice.py",
+        "app/eventyay/base/metrics.py",
+        "app/eventyay/base/orderimport.py",
+        "app/eventyay/base/payment.py",
+        "app/eventyay/base/pdf.py",
+        "app/eventyay/base/shredder.py",
+        "app/eventyay/base/ticketoutput.py",
+        "app/eventyay/base/timeline.py"
+      ],
+      "evidence": [
+        "Directory profile: file_count=30, total_loc=9815. Files span authentication (auth.py), WebSocket infrastructure (channels.py), email sending (email.py), invoice rendering (invoice.py), PDF generation (pdf.py), payment provider base class (payment.py), data-portability shredding (shredder.py), ticket output plugins (ticketoutput.py), order import (orderimport.py), event timeline (timeline.py) — all at the same directory level",
+        "The base/exporters/ subdirectory imports from base/ 14 times — the flat base/ is acting as an unstructured library for its own subdirectory, indicating the boundary is inverted",
+        "Identifiable groupings: document-generation cluster (invoice.py, pdf.py, ticketoutput.py), channel/realtime infra (channels.py), data-lifecycle (shredder.py, orderimport.py), payment plugin base (payment.py, exporter.py, ticketoutput.py)"
+      ],
+      "suggestion": "Create base/rendering/ for invoice.py, pdf.py, ticketoutput.py; base/realtime/ for channels.py; keep payment.py, exporter.py, shredder.py, signals.py at base/ level as they are genuine extension-point bases with multiple callers. Move and update imports using `git mv` and `grep -r 'from eventyay.base.invoice\\|from eventyay.base.pdf\\|from eventyay.base.ticketoutput' app/` to locate callers. Validate with `python manage.py check` and the test suite.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_flat_overload"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "world_model_wrong_package",
+      "summary": "world.py in base/models/ is not exported from __init__.py, belongs to the video/eventyay_common domain, and imports from eventyay.core — it is misplaced relative to its ownership and callers",
+      "related_files": [
+        "app/eventyay/base/models/world.py",
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/eventyay_common/tasks.py",
+        "app/eventyay/eventyay_common/base_tasks.py"
+      ],
+      "evidence": [
+        "world.py is not listed in base/models/__init__.py __all__ or imports — it is invisible to the standard import path for base models",
+        "world.py imports: `from eventyay.core.permissions import ...` and `from eventyay.core.utils.json import CustomJSONEncoder` — it has a hard dependency on a separate package (core/), while all surrounding base/models files import from within base/ or helpers/",
+        "Only two files reference World: eventyay_common/tasks.py and eventyay_common/base_tasks.py — 100% of callers are in eventyay_common/, not in the ticketing-focused base/ subsystem",
+        "The World model manages video-world permissions, JWT decoding, room/exhibitor cloning — semantically it belongs to the live-video domain, not the base ticketing domain"
+      ],
+      "suggestion": "Move world.py to app/eventyay/eventyay_common/models/world.py (creating an eventyay_common/models/ package if it does not exist). Update the two callers in eventyay_common/ to use the local import path. Update any Django migration dependencies: run `python manage.py makemigrations --check` after the move. Commands: `mkdir -p app/eventyay/eventyay_common/models && git mv app/eventyay/base/models/world.py app/eventyay/eventyay_common/models/world.py && sed -i 's/from eventyay.base.models.world/from eventyay.eventyay_common.models.world/g' $(grep -rl 'eventyay.base.models.world' app/)`.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_flat_overload"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "helpers_catch_all",
+      "summary": "app/eventyay/helpers/ accumulates 34 files covering security, payment integration (stripe_utils.py), JWT, date math, PDF rendering, i18n, and URL utilities under an undifferentiated 'helpers' name",
+      "related_files": [
+        "app/eventyay/helpers/__init__.py",
+        "app/eventyay/helpers/stripe_utils.py",
+        "app/eventyay/helpers/jwt_generate.py",
+        "app/eventyay/helpers/security.py",
+        "app/eventyay/helpers/reportlab.py",
+        "app/eventyay/helpers/jsonlogic.py",
+        "app/eventyay/helpers/periodic.py",
+        "app/eventyay/helpers/plugin_enable.py"
+      ],
+      "evidence": [
+        "34 files span: cache, compat, config, cookies, countries, database, daterange, escapejson, formats/, http, i18n, iter, jinja, json, jsonlogic, jsonlogic_query, jwt_generate, migrations/, models.py, money, periodic, plugin_enable, reportlab, safedownload, security, stripe_utils, templatetags/, thumb, timezone, u2f, urls",
+        "stripe_utils.py (payment provider integration), reportlab.py (PDF rendering library wrapper), and plugin_enable.py (plugin lifecycle) do not share concern with date/time helpers or JSON utilities — 'helpers' is a catch-all with no coherent ownership criterion",
+        "helpers/ is imported by base/exporters/ 4 times and base/ 2 times — it serves multiple distinct consumers with unrelated needs"
+      ],
+      "suggestion": "Rename 'helpers' to domain-specific subpackages: extract payment-adjacent code (stripe_utils.py) to eventyay/payments/utils.py near the payment plugin; move reportlab.py to base/rendering/reportlab.py alongside invoice.py and pdf.py; move plugin_enable.py to common/plugins.py. Rename the remainder to eventyay/utils/ to signal it is a utilities package rather than a generic dumping ground. Run `grep -r 'from eventyay.helpers' app/` to enumerate all callers before renaming, then update paths and run `python manage.py check`.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "helpers_catch_all"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The project grew by accumulating models and services into the base/ mega-package without enforcing domain boundaries as new features (video rooms, BBB, Janus, polls, posters, roulette) were added alongside the original ticketing domain — the flat structure is a historical accumulation artifact",
+      "The absence of a 'module owns its models' convention (as seen in cfp/, schedule/) for the video and live-event subsystems caused video-domain models (World, Room, BBB, Janus) to land in the ticketing-focused base/models/ instead of a domain-scoped package",
+      "The helpers/ package acts as a permanent staging area for code that has no obvious home — contributing to a structurally undifferentiated utility surface"
+    ],
+    "likely_symptoms": [],
+    "possible_false_positives": []
+  }
+}

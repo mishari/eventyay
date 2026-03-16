@@ -1,0 +1,236 @@
+{
+  "batch": "incomplete_migration",
+  "batch_index": 14,
+  "assessments": {"incomplete_migration": 40.0},
+  "dimension_notes": {
+    "incomplete_migration": {
+      "evidence": [
+        "LEGACY API version coexists with CURRENT_VERSION in api/versions.py; SubmissionViewSet branches on LEGACY with three methods all marked # pragma: no cover (get_legacy_queryset, get_legacy_serializer, get_legacy_serializer_class), signalling untested dead weight",
+        "PluginType enum in base/plugins.py carries docstring 'THIS IS DEPRECATED, DO NOT USE ANY MORE' but is never removed; get_all_plugins still sorts by m.module.startswith('pretix.'), a residue of the pretix-fork migration",
+        "SubmissionFavouriteDeprecated model + SubmissionFavouriteDeprecatedSerializer live in base/models/submission.py; SubmissionFavouriteDeprecatedView is still wired into api/urls.py at /api/.../favourite-talk/ while the replacement endpoints (favourites_view, favourite_view, favourites_merge_view) are already in place",
+        "UserFavouriteView in api/views/event.py is docstring-DEPRECATED with DeprecationWarning emission but is still routed and callable",
+        "OrderPaymentTypeField and OrderPaymentDateField in api/serializers/order.py carry # TODO: Remove after pretix 2.2 and are still used as payment_date and payment_provider fields on OrderSerializer",
+        "CompatibleCountryField checks hasattr(instance, 'country_old') as a runtime compat shim; InvoiceAddress model carries both country_old CharField and country FastCountryField side-by-side; fallback to country_old appears in invoices.py, orderlist.py (3 places), and two HTML templates",
+        "PageNumberPagination in api/pagination.py has an explicit TODO tied to LEGACY API removal embedded in its docstring; it duplicates LimitOffsetPagination logic just to serve the legacy query-param style",
+        "orga/permissions.py adds a 'base.change_settings' perm alias with comment '# Legacy for plugins. TODO remove after v2025.1.0' — the target version is past given the current date",
+        "talk_schedule_public and CustomerOrderCheckView in api/views/event.py have their implementation left as commented-out blocks beneath stub 501-returning bodies; the old code is neither gone nor live",
+        "pytz is imported in 29 production files (presale, base, control, features, plugins, api) while newer modules use stdlib zoneinfo; eventyay_common/views/dashboards.py imports both from pytz.tzinfo import DstTzInfo and from zoneinfo import ZoneInfo in the same file"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {
+        "abstraction_leverage": 50.0,
+        "indirection_cost": 35.0,
+        "interface_honesty": 30.0,
+        "delegation_density": 55.0,
+        "definition_directness": 40.0,
+        "type_discipline": 50.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "incomplete_migration": {
+      "strengths": [
+        "The replacement favourites API (favourites_view, favourite_view, favourites_merge_view) is fully implemented and live, so the new path exists even while the old one persists",
+        "DeprecationWarning is explicitly emitted in both UserFavouriteView and SubmissionFavouriteDeprecatedView, giving callers a signal they should migrate",
+        "The LEGACY API version system is formally modelled (DEPRECATED_VERSIONS list, branching in get_serializer_class) rather than left as unstructured dead code",
+        "api/pagination.py's TODO is explicit and scoped to the LEGACY removal, making the intent legible"
+      ],
+      "issue_character": "The codebase is carrying multiple parallel strata from at least three distinct migration campaigns — a pretix-to-eventyay fork cleanup, a pytz-to-zoneinfo timezone library swap, and a submission-favourites API redesign — none of which has been completed, leaving deprecated symbols, dead model fields, commented-out endpoint bodies, and mixed library imports scattered across production code.",
+      "score_rationale": "The density and variety of incomplete migrations is high: three fully independent migration axes (timezone library, favourites API, pretix residue) each show old and new code coexisting without a clear removal gate. Several deprecated symbols (PluginType, OrderPaymentTypeField/DateField, SubmissionFavouriteDeprecated) remain in production paths with only TODO comments and version references that have already elapsed. The orga/permissions.py shim is past its own declared deadline. This places the codebase well below the midpoint for this dimension — at global anchor ~40: numerous confirmed issues with active callers, some structural (the pytz/zoneinfo split spans 29 files), but the overall code is not entirely incoherent since the new APIs do exist alongside the old ones."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "legacy_api_dead_branches",
+      "summary": "LEGACY API version branches in SubmissionViewSet are pragma-excluded and never tested, making them effectively dead weight",
+      "related_files": [
+        "app/eventyay/api/views/submission.py",
+        "app/eventyay/api/pagination.py",
+        "app/eventyay/api/versions.py"
+      ],
+      "evidence": [
+        "get_legacy_queryset, get_legacy_serializer, get_legacy_serializer_class all marked # pragma: no cover in submission.py",
+        "PageNumberPagination docstring says 'TODO remove implementation details once the legacy API is getting removed' and duplicates LimitOffsetPagination",
+        "api/versions.py: DEPRECATED_VERSIONS = [LEGACY] with a TODO to track and warn about legacy usage that is not yet implemented"
+      ],
+      "suggestion": "Decide a sunset date for the LEGACY version and file a tracking issue. Until then, at minimum remove # pragma: no cover and add tests for the legacy branches, or remove LEGACY from SUPPORTED_VERSIONS and delete the dead methods.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "deprecated_favourites_api_still_routed",
+      "summary": "SubmissionFavouriteDeprecated model, serializer, and view are still routed under /favourite-talk/ despite a complete replacement API existing",
+      "related_files": [
+        "app/eventyay/api/views/submission.py",
+        "app/eventyay/api/urls.py",
+        "app/eventyay/base/models/submission.py"
+      ],
+      "evidence": [
+        "SubmissionFavouriteDeprecated model and SubmissionFavouriteDeprecatedSerializer defined in base/models/submission.py",
+        "SubmissionFavouriteDeprecatedView wired at path('events/<slug:event>/favourite-talk/', ...) in api/urls.py line 251",
+        "Replacement endpoints favourites_view, favourite_view, favourites_merge_view are all live and fully implemented"
+      ],
+      "suggestion": "Remove the /favourite-talk/ URL, delete SubmissionFavouriteDeprecatedView, SubmissionFavouriteDeprecated, and SubmissionFavouriteDeprecatedSerializer. Drop the corresponding migration table or document it as a data-migration tombstone.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "userfavouriteview_deprecated_still_callable",
+      "summary": "UserFavouriteView in api/views/event.py is marked DEPRECATED and emits DeprecationWarning but remains fully callable",
+      "related_files": [
+        "app/eventyay/api/views/event.py"
+      ],
+      "evidence": [
+        "Docstring explicitly says 'DEPRECATED: Use per-submission favourite API instead'",
+        "post() emits warnings.warn(..., DeprecationWarning) at runtime but returns real data",
+        "No corresponding URL routing removal is visible"
+      ],
+      "suggestion": "Check whether any external caller still uses UserFavouriteView. If not, remove it. If yes, set a firm removal date and return HTTP 410 Gone instead of serving data.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "order_payment_compat_fields_past_deadline",
+      "summary": "OrderPaymentTypeField and OrderPaymentDateField are marked TODO Remove after pretix 2.2 but are still used in OrderSerializer",
+      "related_files": [
+        "app/eventyay/api/serializers/order.py"
+      ],
+      "evidence": [
+        "Lines 630 and 639: # TODO: Remove after pretix 2.2",
+        "Lines 742-743: payment_date = OrderPaymentDateField(source='*', ...) and payment_provider = OrderPaymentTypeField(source='*', ...) still present in OrderSerializer",
+        "The pretix 2.2 version referenced is from the upstream fork and is long past"
+      ],
+      "suggestion": "Verify whether any API consumers still depend on payment_date and payment_provider top-level fields. If clients have migrated to the payments[] array, delete both compat field classes and remove them from OrderSerializer's fields list.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "country_old_compat_shim",
+      "summary": "InvoiceAddress carries a legacy country_old CharField alongside the new FastCountryField, and multiple callers fall back to country_old",
+      "related_files": [
+        "app/eventyay/base/models/orders.py",
+        "app/eventyay/api/serializers/order.py",
+        "app/eventyay/base/services/invoices.py",
+        "app/eventyay/base/exporters/orderlist.py",
+        "app/eventyay/presale/templates/pretixpresale/event/order.html",
+        "app/eventyay/control/templates/pretixcontrol/order/index.html"
+      ],
+      "evidence": [
+        "InvoiceAddress.country_old = models.CharField(...) at orders.py line 2495 alongside country = FastCountryField(...)",
+        "CompatibleCountryField.to_representation checks hasattr(instance, 'country_old') and returns it as a fallback",
+        "invoices.py line 96: ia.country.name if ia.country else ia.country_old",
+        "orderlist.py has three separate fallback patterns to country_old",
+        "Both HTML templates use |default:order.invoice_address.country_old filter"
+      ],
+      "suggestion": "Write a data migration to populate country from country_old for any rows where country is blank, then remove country_old from the model and all call sites. Remove CompatibleCountryField and replace with CountryField.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "pytz_zoneinfo_mixed_migration",
+      "summary": "29 production files still import pytz while the codebase has partially migrated to stdlib zoneinfo, including one file importing both",
+      "related_files": [
+        "app/eventyay/eventyay_common/views/dashboards.py",
+        "app/eventyay/presale/views/organizer.py",
+        "app/eventyay/base/models/orders.py",
+        "app/eventyay/base/exporters/orderlist.py",
+        "app/eventyay/features/analytics/graphs/tasks.py"
+      ],
+      "evidence": [
+        "eventyay_common/views/dashboards.py imports both 'from pytz.tzinfo import DstTzInfo' and 'from zoneinfo import ZoneInfo'",
+        "29 files use import pytz or from pytz; 7 files use from zoneinfo import ZoneInfo; the two sets overlap on the same domain",
+        "pytz.UTC, pytz.timezone(), and pytz.common_timezones used in 29 files across presale, base, control, api, features, plugins layers"
+      ],
+      "suggestion": "Replace pytz with stdlib zoneinfo across the codebase (pytz is deprecated as of Python 3.9+). Use ZoneInfo for named zones, datetime.timezone.utc for UTC. This is a well-scoped mechanical refactor since pytz and zoneinfo APIs are close.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "orga_permissions_shim_past_deadline",
+      "summary": "orga/permissions.py legacy permission alias has a TODO deadline of v2025.1.0 which has elapsed",
+      "related_files": [
+        "app/eventyay/orga/permissions.py"
+      ],
+      "evidence": [
+        "File content: '# Legacy for plugins. TODO remove after v2025.1.0' followed by rules.add_perm('base.change_settings', can_change_event_settings)",
+        "The current date is 2026-03-14, meaning the deadline has passed"
+      ],
+      "suggestion": "Audit whether any installed plugin still uses the 'base.change_settings' permission string. If no external plugin references it, delete the shim file and the perm registration.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "commented_out_endpoint_bodies",
+      "summary": "talk_schedule_public and CustomerOrderCheckView have their original implementation left as commented-out code beneath stub 501 responses",
+      "related_files": [
+        "app/eventyay/api/views/event.py"
+      ],
+      "evidence": [
+        "talk_schedule_public returns JsonResponse({'status': 'disabled (pretix dependency)'}, status=501) followed by ~20 lines of commented-out original implementation",
+        "CustomerOrderCheckView.post returns Response({'detail': 'CustomerOrderCheckView disabled (pretix dependency).'}, status=501) with commented-out body below",
+        "Comments reference 'pretix dependency' indicating these are pretix-fork migration stubs"
+      ],
+      "suggestion": "Remove the commented-out code blocks entirely. If the endpoints are permanently disabled, leave only the 501 stub with a brief comment. If they need reimplementation, track them as issues rather than inline comments.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "plugintype_deprecated_enum_retained",
+      "summary": "PluginType enum in base/plugins.py is explicitly deprecated in its docstring but kept for hypothetical external plugin compatibility",
+      "related_files": [
+        "app/eventyay/base/plugins.py"
+      ],
+      "evidence": [
+        "PluginType docstring: 'THIS IS DEPRECATED, DO NOT USE ANY MORE. This is only not removed yet as external plugins might have references to this enum.'",
+        "No internal callers in the codebase import or use PluginType",
+        "get_all_plugins also sorts by m.module.startswith('pretix.') — a pretix-fork residue with no eventyay modules matching that prefix"
+      ],
+      "suggestion": "Remove PluginType from plugins.py (add a changelog entry for plugin authors). Remove the pretix. prefix sort key from get_all_plugins since no installed apps will ever match it.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The project is a fork of Pretix merged with Pretalx and rebranded as Eventyay; the fork migration was never fully completed, leaving pretix version references (pretix 2.2, pretix.), pretix-named env vars (PRETIX_IGNORE_CONFLICTS), and pretix-shaped model fields (country_old) throughout production code",
+      "The pytz-to-zoneinfo migration started (newer code and models use zoneinfo) but was not applied retroactively to existing files, creating a large mixed-library surface",
+      "The submission-favourites API was redesigned but the old model and endpoint were kept alive without a removal deadline, creating permanent dual-maintenance"
+    ],
+    "likely_symptoms": [
+      "deprecated_favourites_api_still_routed",
+      "userfavouriteview_deprecated_still_callable",
+      "plugintype_deprecated_enum_retained",
+      "commented_out_endpoint_bodies"
+    ],
+    "possible_false_positives": []
+  }
+}

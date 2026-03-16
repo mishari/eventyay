@@ -1,0 +1,147 @@
+{
+  "batch": "error_consistency",
+  "batch_index": 4,
+  "assessments": {
+    "error_consistency": 50.0
+  },
+  "dimension_notes": {
+    "error_consistency": {
+      "evidence": [
+        "app/eventyay/base/models/organizer.py lines 48, 73: `raise Exception(...)` used for access-permission enforcement — bare Exception raised for a business-logic constraint that would benefit from a custom PermissionError or ValidationError subclass",
+        "app/eventyay/base/models/availability.py lines 80, 106, 108, 127, 129: five separate `raise Exception(...)` for invalid method arguments — these should be ValueError or a domain-specific exception",
+        "app/eventyay/base/models/schedule.py lines 111-115, 164: four separate `raise Exception(...)` for schedule versioning constraints",
+        "app/eventyay/base/models/mail.py line 406: `raise Exception(_('This mail has been sent already...'))` — bare Exception with a translated message, inconsistent with how SendMailException is defined in base/services/mail.py",
+        "app/eventyay/base/services/mail.py line 66: `class SendMailException(Exception)` — a custom exception exists for mail errors, but base/models/mail.py raises bare Exception for the same domain",
+        "app/eventyay/base/models/mixins.py line 155: `except Exception: return super().save(...)` — FileCleanupMixin.save() silently swallows any exception from the pre-save DB lookup, including IntegrityError and OperationalError, with no logging",
+        "app/eventyay/base/models/auth.py line 91: `raise Exception('You must provide a password')` — bare Exception for a validation constraint",
+        "app/eventyay/control/views/user.py lines 81, 94: `raise Exception('Possible replay attack...')` — security-critical events raised as bare Exception rather than a SecurityError or AuthenticationError",
+        "app/eventyay/base/services/orders.py line 2716: `raise Exception('change_payment_provider should only be called in atomic transaction!')` — programming contract violation raised as bare Exception",
+        "app/eventyay/orga/forms/cfp.py lines 316, 318: `raise Exception(_('JSON file does not contain...'))` — user-facing validation errors raised as bare Exception rather than ValidationError",
+        "app/eventyay/common/signals.py has 5 exception-related occurrences suggesting error handling in signal dispatch",
+        "app/eventyay/control/views/geo.py lines 23-32: catches `IOError` from HTTP requests but returns `{'success': False}` silently — the caller has no way to distinguish a config error from a network error"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "error_consistency": {
+      "strengths": [
+        "base/services/mail.py defines a custom SendMailException for mail-specific errors and documents the error contract in the mail() function's docstring",
+        "base/models/orders.py uses a custom SecureOrderQuerySet.get_with_secret_check that raises Order.DoesNotExist consistently",
+        "api/views/access_code.py catches ProtectedError specifically from Django's deletion framework rather than using a broad catch"
+      ],
+      "issue_character": "The codebase has pervasive use of bare `raise Exception(...)` for domain-specific failure modes that range from business-rule violations to security events to user-facing validation errors, while simultaneously defining custom exception classes (SendMailException, WaitingListError) in some subsystems — the gap between these is wide and inconsistent.",
+      "score_rationale": "This codebase scores at the mediocre (50) anchor. The volume of bare Exception raises is high — 20+ confirmed instances across models, services, and views — and they span security-critical paths (replay attack detection), user-facing validation (form imports, mail resend), and internal contract enforcement. FileCleanupMixin silently swallows exceptions without logging, which is a silent-failure anti-pattern. The inconsistency is codebase-wide rather than isolated, preventing a higher score. Some subsystems (mail service, access_code API) demonstrate better practice, but they are not the dominant pattern."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "error_consistency",
+      "identifier": "err_bare_exception_domain_violations",
+      "summary": "Pervasive use of bare `raise Exception(...)` for domain business-rule violations across models and services, replacing appropriate custom exception types",
+      "related_files": [
+        "app/eventyay/base/models/organizer.py",
+        "app/eventyay/base/models/availability.py",
+        "app/eventyay/base/models/schedule.py",
+        "app/eventyay/base/models/mail.py",
+        "app/eventyay/base/models/auth.py",
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "organizer.py lines 48, 73: bare Exception for permission enforcement",
+        "availability.py lines 80, 106, 108, 127, 129: five bare Exception raises for invalid arguments to business methods",
+        "schedule.py lines 111-115, 164: four bare Exception raises for versioning invariant violations",
+        "mail.py line 406: bare Exception for 'mail already sent' — same domain where SendMailException exists",
+        "auth.py line 91: bare Exception for missing password validation",
+        "services/orders.py line 2716: bare Exception for transaction contract violation"
+      ],
+      "suggestion": "Introduce a small hierarchy of domain exceptions in eventyay/base/exceptions.py: EventyayValidationError (for argument/state violations), EventyayPermissionError (for permission checks), EventyayContractError (for programming contract violations). Replace bare Exception raises with the appropriate type. For user-facing messages, use Django's ValidationError.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_exception_hierarchy"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err_security_bare_exception",
+      "summary": "Security-critical replay attack detection raises bare Exception instead of an authentication error type",
+      "related_files": [
+        "app/eventyay/control/views/user.py"
+      ],
+      "evidence": [
+        "Line 81: `raise Exception('Possible replay attack, sign count not higher')`",
+        "Line 94: `raise Exception('Possible replay attack, sign count set')`",
+        "These are caught somewhere upstream; a bare Exception provides no programmatic way to distinguish a replay attack from any other error"
+      ],
+      "suggestion": "Define an AuthenticationError or ReplayAttackError in eventyay.base.exceptions and raise it here. The caller can then log the security event explicitly and return a 403 rather than relying on a generic exception handler.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "missing_exception_hierarchy"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err_file_cleanup_silent_swallow",
+      "summary": "FileCleanupMixin.save() silently catches all exceptions from the pre-save database lookup with no logging or propagation",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "Lines 153-156: `try: pre_save_instance = self.__class__.objects.get(pk=self.pk) except Exception: return super().save(*args, **kwargs)`",
+        "If the DB lookup fails for any reason (connection error, IntegrityError, OperationalError), the mixin silently proceeds as if there is no existing record, potentially leaving orphaned files without logging the failure"
+      ],
+      "suggestion": "Narrow the except clause to `except self.__class__.DoesNotExist` (the expected case when pk was recently assigned). Log unexpected exceptions at WARNING level and re-raise or at minimum record them before silently continuing.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "silent_error_swallowing"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err_user_validation_bare_exception",
+      "summary": "User-facing validation errors in forms raise bare Exception instead of Django ValidationError, meaning form handling will not catch them as form errors",
+      "related_files": [
+        "app/eventyay/orga/forms/cfp.py"
+      ],
+      "evidence": [
+        "Line 316: `raise Exception(_('JSON file does not contain a list.'))`",
+        "Line 318: `raise Exception(_('JSON file does not contain a list of objects.'))`",
+        "These are inside form clean/validation methods; Django form machinery catches ValidationError to display field errors, but bare Exception will propagate as a 500 error in production"
+      ],
+      "suggestion": "Replace with `raise forms.ValidationError(...)` or `raise serializers.ValidationError(...)` depending on context, so the error is caught by the form framework and displayed to the user rather than causing a 500.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "missing_exception_hierarchy"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err_geo_silent_mixed_failure",
+      "summary": "GeoCodeView returns {'success': False} for both 'no API key configured' and 'network error', losing the distinction between a configuration error and a transient failure",
+      "related_files": [
+        "app/eventyay/control/views/geo.py"
+      ],
+      "evidence": [
+        "Lines 23-32: returns JsonResponse({'success': False, 'results': []}) for both the missing-API-key case (line 29) and the IOError case (line 32)",
+        "The caller cannot distinguish a permanent configuration error from a temporary network failure, preventing appropriate retry logic or error messaging"
+      ],
+      "suggestion": "Return distinct error codes or HTTP status codes: 503 for network failures (retryable), 501/200 with a specific 'unconfigured' flag for the missing API key case. At minimum, log the IOError with more context than just 'Geocoding failed'.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "error_context_loss"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "No shared exception hierarchy was established during the codebase merge; each contributor raised bare Exception rather than importing from a non-existent common exceptions module",
+      "The codebase evolved from two upstream projects (pretix, pretalx) that had different exception conventions, and neither convention was adopted as the standard"
+    ],
+    "likely_symptoms": [
+      "err_bare_exception_domain_violations — these are numerous individual symptoms of the missing exception hierarchy"
+    ],
+    "possible_false_positives": []
+  }
+}

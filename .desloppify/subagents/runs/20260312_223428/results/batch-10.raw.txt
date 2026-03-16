@@ -1,0 +1,179 @@
+{
+  "batch": "test_strategy",
+  "batch_index": 10,
+  "assessments": {
+    "test_strategy": 28.0
+  },
+  "dimension_notes": {
+    "test_strategy": {
+      "evidence": [
+        "app/tests/ contains four sub-suites (stable, talk, tickets, video). Only 4 files out of the entire test directory import from eventyay.*: app/tests/tickets/base/test_rich_text.py, app/tests/talk/submission/test_question_model.py, app/tests/talk/agenda/test_agenda_schedule_export.py, and app/tests/stable/conftest.py.",
+        "The tickets sub-suite imports from pretix.* (upstream project), the talk sub-suite imports from pretalx.* (upstream project), and the video sub-suite imports from venueless.* (upstream project). These suites test upstream code, not the eventyay-specific layer.",
+        "Zero files in app/tests/ import from any of the 10 seed files: eventyay.base.models.mixins (20 importers), eventyay.base.signals (12 importers), eventyay.base.models.event (10 importers), eventyay.base.exporter (8 importers), eventyay.base.models.orders (7 importers), eventyay.base.models.organizer (7 importers), eventyay.base.models.product (6 importers), eventyay.base.models.log (5 importers), eventyay.eventyay_common.utils (4 importers), eventyay.presale.checkoutflowstep.template_flow_step (4 importers).",
+        "app/tests/stable/test_presale.py, test_api.py, test_control.py, and test_common.py are thin smoke tests that only assert HTTP status codes fall in broad ranges (e.g. [200, 301, 302]) and make no assertions about business logic. test_common.py tests CSP endpoint responses, not business behavior.",
+        "LogMixin.log_action() (20 importers) has no direct unit tests in the eventyay namespace. The only log-related test is app/tests/talk/common/test_common_models_log.py, which imports from pretalx and tests a pretalx Submission object, not the eventyay LogMixin directly.",
+        "FileCleanupMixin has zero tests: no test file imports or exercises task_cleanup_file, _delete_files, or process_image across the entire test suite.",
+        "GenerateCode.assign_code() and OrderedModel.move() have zero tests in the eventyay namespace.",
+        "eventyay.eventyay_common.utils.generate_token(), encode_email(), check_create_permission(), and get_subevent() — all request-touching business functions — have zero tests.",
+        "eventyay.base.signals.EventPluginSignal._is_active() and check_plugin_active() are tested only in app/tests/talk/common/test_common_signals.py (imports from pretalx.common.signals) and app/tests/tickets/base/test_plugins.py (imports from pretix.base.signals). Neither tests the eventyay version.",
+        "BaseExporter (eventyay.base.exporter) is tested in app/tests/talk/common/test_common_exporter.py but that imports pretalx.common.exporter.BaseExporter, not the eventyay class.",
+        "The complexity hotspots with zero eventyay test coverage include: eventyay.base.services.orders (2856 LOC, complexity 266), eventyay.base.services.cart (1688 LOC, complexity 224), eventyay.base.models.orders (2621+ LOC), eventyay.base.invoice, eventyay.base.payment, eventyay.base.email.",
+        "No integration tests exist that chain across eventyay modules: e.g. no test exercises the full presale checkout flow using eventyay.presale.checkoutflowstep classes through the signal layer to eventyay.base.models.orders."
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "test_strategy": {
+      "strengths": [
+        "The inherited upstream test suites (tickets from pretix, talk from pretalx, video from venueless) are comprehensive within their own namespaces and provide a meaningful regression baseline for those upstream behaviors.",
+        "The stable/conftest.py correctly imports from eventyay.base.models and establishes fixtures (organizer, event, team) that could be the foundation of a proper integration test suite.",
+        "The test suite structure (stable/, talk/, tickets/, video/) mirrors the product architecture, which is an appropriate organizational skeleton for future eventyay-specific tests."
+      ],
+      "issue_character": "The core defect is structural and systemic: the test suite is almost entirely composed of upstream project tests (pretix, pretalx, venueless) that test imported code rather than the eventyay-specific layer, leaving all 10 highest-importer eventyay files completely uncovered by direct tests.",
+      "score_rationale": "Against the 60-anchor ('meaningful risk goes unvalidated; a developer cannot trust that their changes won't break things in untested areas'), this codebase falls well below that bar: it is not merely that some paths lack coverage, but that the entire eventyay-specific layer — including the god-module mixins, the signal dispatch system, the exporter base, order models, and checkout flow — has essentially zero direct test coverage. A developer making any change to eventyay-specific code (business logic in LogMixin.log_action, the FileCleanupMixin file lifecycle, the EventPluginSignal routing, the OrderedModel.move swap, generate_token JWT generation) has no test to tell them if they broke something. The only eventyay tests that exist are four shallow HTTP smoke tests in the stable suite. This scores nearer the 20-40 range ('actively works against the developer — misleading, unpredictable, or fragile in ways that regularly impede work'), slightly above 20 because the inherited upstream suites provide non-trivial coverage of the shared model layer when accessed through the old namespace, and the organizational skeleton exists to build on."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "test_strategy",
+      "identifier": "no_eventyay_coverage_core_mixins",
+      "summary": "LogMixin, FileCleanupMixin, GenerateCode, and OrderedModel have zero direct tests in the eventyay namespace",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/tests/stable/test_common.py"
+      ],
+      "evidence": [
+        "grep across all app/tests/ for 'from eventyay.base.models.mixins' returns zero results.",
+        "LogMixin.log_action() sanitizes sensitive keys, creates LogEntry with conditional webhook/notification dispatch, and handles auth/token mapping across 5 different auth types — all untested against eventyay code.",
+        "FileCleanupMixin.save() schedules a task_cleanup_file async task with a 10-second countdown when a FileField changes — race-condition-sensitive behavior with no test.",
+        "GenerateCode.assign_code() uses a retry loop against a unique constraint and OrderedModel.move() does in-memory list manipulation followed by positional saves — both untested."
+      ],
+      "suggestion": "Create app/tests/stable/test_base_mixins.py. Use pytest-django with @pytest.mark.django_db and a minimal concrete model subclass (e.g. a test-only model inheriting LogMixin + models.Model). Test: (1) log_action creates a LogEntry and sanitizes 'password'/'secret'/'api_key' keys, (2) log_action with data=[] raises TypeError, (3) FileCleanupMixin.save schedules task_cleanup_file when FileField path changes, (4) GenerateCode.assign_code sets a unique code property, (5) OrderedModel.move correctly swaps positions.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_eventyay_unit_tests"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "no_eventyay_signal_dispatch_tests",
+      "summary": "EventPluginSignal._is_active() and check_plugin_active() are untested in the eventyay namespace despite controlling all plugin-gated feature delivery",
+      "related_files": [
+        "app/eventyay/base/signals.py",
+        "app/tests/tickets/base/test_plugins.py",
+        "app/tests/talk/common/test_common_signals.py"
+      ],
+      "evidence": [
+        "app/tests/tickets/base/test_plugins.py imports from pretix.base.signals, not eventyay.base.signals; app/tests/talk/common/test_common_signals.py imports from pretalx.common.signals. Neither tests eventyay.base.signals.EventPluginSignal.",
+        "check_plugin_active() contains branching logic across 5 conditions: sender None + core module, sender with no plugins, sender with available_plugins dict, is_plugin True/False, and compatibility_errors. All branches are untested at the eventyay level.",
+        "resolve_app_for_module() uses @functools.lru_cache(maxsize=1000) whose cache invalidation behavior between tests is untested.",
+        "The app_cache global dict populated by _populate_app_cache() is module-level mutable state that can bleed between tests."
+      ],
+      "suggestion": "Create app/tests/stable/test_base_signals.py. Import eventyay.base.signals directly. Test: (1) EventPluginSignal.send() raises ValueError for non-Event sender, (2) _is_active returns False for a plugin not in event.get_plugins(), (3) _is_active returns True for core modules regardless of plugin list, (4) send_robust catches receiver exceptions rather than propagating, (5) send_chained passes return value of receiver N as input to receiver N+1. Use Django's app registry mock or a dummy AppConfig to avoid depending on INSTALLED_APPS state.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_eventyay_unit_tests"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "no_eventyay_utils_tests",
+      "summary": "eventyay_common.utils business functions (generate_token, encode_email, check_create_permission) have zero tests despite handling JWT generation and permission gating for the video subsystem",
+      "related_files": [
+        "app/eventyay/eventyay_common/utils.py"
+      ],
+      "evidence": [
+        "grep across all app/tests/ for 'generate_token', 'encode_email', 'check_create_permission', 'get_subevent' returns zero results.",
+        "generate_token() encodes a 30-day JWT using settings.SECRET_KEY; the token structure and expiry boundary are untested.",
+        "encode_email() SHA-256-hashes an email and uppercases the first 7 hex chars — the collision risk of 7 chars is untested.",
+        "check_create_permission() accesses request.user.get_organizer_permission_set and request.user.has_active_staff_session — both permission paths are untested.",
+        "get_subevent() silently swallows SubEvent.DoesNotExist but re-raises ValueError — asymmetric error handling with no test."
+      ],
+      "suggestion": "Create app/tests/stable/test_eventyay_common_utils.py. Use unittest.mock to mock request objects. Test: (1) encode_email produces a 7-char uppercase hex string deterministically, (2) generate_token returns a decodable JWT with correct 'has_permission' field, (3) check_create_permission returns True when 'can_create_events' is in permission set, (4) check_create_permission returns True for active staff session, (5) get_subevent returns None for invalid integer pk (DoesNotExist), (6) get_subevent propagates ValueError for non-integer subevent param.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "missing_eventyay_unit_tests"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "stable_smoke_tests_have_no_behavioral_assertions",
+      "summary": "The stable/ test suite makes only HTTP status-range assertions and provides no validation of eventyay business logic",
+      "related_files": [
+        "app/tests/stable/test_api.py",
+        "app/tests/stable/test_presale.py",
+        "app/tests/stable/test_control.py",
+        "app/tests/stable/test_common.py"
+      ],
+      "evidence": [
+        "test_presale.py: all assertions are 'assert response.status_code in [200, 301, 302]' with no checks on response content, redirected URL semantics, or returned data.",
+        "test_api.py: 'assert response.status_code in [401, 403, 404]' — a 404 is accepted as 'auth required', masking cases where an endpoint doesn't exist at all.",
+        "test_control.py: 'assert response.status_code in [200, 302]' for the organizer dashboard — passes even if the page renders an error template with status 200.",
+        "test_common.py: CSP report test accepts 200, 204, or 400 for malformed JSON input, meaning the endpoint can fail silently and the test still passes.",
+        "These tests were added as initial integration scaffolding but do not validate the behaviors they claim to test."
+      ],
+      "suggestion": "Harden the stable integration tests to assert behavioral invariants: (1) for presale pages, assert response.context or response.content contains expected event name; (2) for API auth tests, assert exactly 401 (not 403/404) with a 'detail' key in JSON; (3) for CSP report endpoint, assert exactly 200 or 204 for valid input and exactly 400 for malformed JSON. These changes turn smoke tests into regression guards without requiring major new infrastructure.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "weak_integration_tests"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "zero_coverage_complex_services",
+      "summary": "High-complexity eventyay-specific services (orders: 2856 LOC, cart: 1688 LOC, invoice: 965 LOC, email: 832 LOC) have no eventyay-namespace tests",
+      "related_files": [
+        "app/eventyay/base/services/orders.py",
+        "app/eventyay/base/services/cart.py",
+        "app/eventyay/base/invoice.py",
+        "app/eventyay/base/email.py"
+      ],
+      "evidence": [
+        "grep for 'from eventyay.base.services.orders', 'from eventyay.base.services.cart', 'from eventyay.base.invoice', 'from eventyay.base.email' across app/tests/ returns zero matches.",
+        "app/tests/tickets/base/test_orders.py imports from pretix.base.services.orders — testing upstream pretix code, not eventyay overrides.",
+        "eventyay.base.services.orders has complexity_score 266 and a monster_function flag, indicating deeply branched business logic that is entirely untested at the eventyay level.",
+        "eventyay.base.services.cart has complexity_score 224 with 1688 LOC and covers cart manipulation, quota checking, and seat assignment logic — all untested in the eventyay namespace."
+      ],
+      "suggestion": "Prioritize integration tests for the three highest-risk paths: (1) order placement flow via eventyay.base.services.orders.perform_order with a real event, quota, and product — assert order status transitions; (2) cart service via eventyay.base.services.cart for add/remove/expire with quota constraints; (3) invoice generation for a paid order. Use pytest-django with @pytest.mark.django_db and the existing stable conftest fixtures as a starting point. These are the paths most likely to regress during eventyay-specific changes.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_eventyay_unit_tests"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "upstream_tests_import_wrong_namespace",
+      "summary": "Tickets and talk test suites import from pretix.* and pretalx.* respectively; if eventyay renames or overrides those modules, the tests will silently test the wrong code",
+      "related_files": [
+        "app/tests/tickets/base/test_models.py",
+        "app/tests/tickets/base/test_orders.py",
+        "app/tests/talk/common/test_common_signals.py",
+        "app/tests/talk/common/test_common_models_log.py"
+      ],
+      "evidence": [
+        "app/tests/tickets/base/test_models.py line 17-49: all imports use 'from pretix.base.models import ...' and 'from pretix.base.services.orders import ...'. If eventyay.base.models diverges from pretix.base.models, these tests continue passing while the eventyay layer regresses.",
+        "app/tests/talk/common/test_common_signals.py line 3: 'from pretalx.common.signals import EventPluginSignal' — this does not test eventyay.base.signals.EventPluginSignal at all.",
+        "app/tests/talk/common/test_common_models_log.py uses submission.log_action() on a pretalx Submission object, testing pretalx's LogMixin, not eventyay's LogMixin in mixins.py.",
+        "This pattern means divergence between upstream pretix/pretalx and eventyay has no test-time detection mechanism."
+      ],
+      "suggestion": "Audit the inherited test suites and create a compatibility shim test file (e.g. app/tests/stable/test_namespace_aliases.py) that imports the same symbols from both the upstream namespace (pretix.base.models.Event) and eventyay namespace (eventyay.base.models.Event) and asserts they resolve to the same class. This makes namespace divergence immediately detectable. Long-term, migrate critical business-logic tests to import from eventyay.* directly.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "wrong_namespace_tests"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The project merged three upstream codebases (pretix, pretalx, venueless) but inherited their test suites without migrating import paths to the eventyay namespace — creating a false sense of test coverage that does not actually exercise the eventyay-specific layer.",
+      "The stable/ test suite was added as a thin integration scaffolding to verify basic routing works post-merge, but was never extended to cover business logic — its broad status-range assertions make it ineffective as a regression guard."
+    ],
+    "likely_symptoms": [
+      "stable_smoke_tests_have_no_behavioral_assertions"
+    ],
+    "possible_false_positives": []
+  }
+}

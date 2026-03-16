@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pipx upgrade:*)",
+      "Skill(desloppify)",
+      "Bash(desloppify update-skill:*)",
+      "Bash(desloppify config:*)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show security --status open 2>&1 | head -80)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show security --no-budget 2>&1 | grep \"kind:\" | sort | uniq -c | sort -rn | head -20)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show security --no-budget 2>&1 | grep \"kind:\" | sed 's/.*kind: //' | sort | uniq -c | sort -rn)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show security --no-budget 2>&1 | grep -A3 \"B113\" | head -40)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show security --no-budget 2>&1 | grep -B2 \"B308\\\\|B703\" | grep \"\\\\.py\\\\|B308\\\\|B703\" | head -40)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show mutable --no-budget 2>&1 | head -60)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show orphaned --status open --no-budget 2>&1 | head -60)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show unused --no-budget 2>&1 | head -40)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show structural --no-budget 2>&1 | grep \"smell:\\\\|kind:\\\\|^  app\\\\|^  ○\" | head -60)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify show structural --no-budget 2>&1 | grep -A4 \"T[0-9]\" | head -60)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify scan --path . 2>&1 | tail -40)",
+      "Bash(date && TZ='Asia/Bangkok' date)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify review --run-batches --dry-run 2>&1 | tail -15)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify next --cluster auto/security --count 157 2>&1 | grep -B2 \"Sensitive data\" | grep \"File:\" | sort -u | head -20)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify next --cluster auto/security --count 157 2>&1 | grep -E \"log_sensitive|sensitive\" | head -20)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify scan --path . 2>&1 | tail -20)",
+      "Bash(cd \"/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay\" && desloppify plan triage --stage enrich --attestation \"All 20 clusters enriched. Every step has 80+ char detail with a file path in app/eventyay/, effort tag \\(trivial/small/medium/large\\), and issue_refs linking to specific review findings. Verified: api-views-submission-cleanup, arch-layer-violations, logic-and-error-clarity, encode-email-and-api-utils-dedup, payment-contract-fixes. No steps reference skipped issues.\" --report \"All 20 clusters fully enriched with file-specific details and issue refs. High-priority clusters: logic-and-error-clarity \\(bugs in orders.py:2338, bbb service\\), auth-model-type-contracts \\(email.strip crash in auth.py\\), payment-contract-fixes \\(execute_payment type lie in payment.py\\). Medium clusters: arch-layer-violations \\(base/ module-scope imports\\), api-views-submission-cleanup \\(submission.py @action boilerplate\\), encode-email-and-api-utils-dedup \\(agenda/views/utils.py vs eventyay_common/utils.py\\). All steps have trivial/small/medium effort tags and linked review issue IDs.\" 2>&1 | grep -v \"Excluding\")"
+    ]
+  }
+}

@@ -177,7 +177,7 @@ class InfoForm(CfPFormMixin, ConfiguredFieldOrderMixin, QuestionFieldsMixin, Req
             setattr(self.instance, key, value)
         result = super().save(*args, **kwargs)
         if 'image' in self.cleaned_data:
-            self.instance.process_image('image')
+            self.instance.schedule_image_processing('image')
         for key, value in self.cleaned_data.items():
             if key.startswith('question_'):
                 self.save_questions(key, value)

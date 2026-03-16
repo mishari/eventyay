@@ -1,0 +1,135 @@
+{
+  "batch": "error_consistency",
+  "batch_index": 4,
+  "assessments": {
+    "error_consistency": 48.0
+  },
+  "dimension_notes": {
+    "error_consistency": {
+      "evidence": [
+        "base/models/mixins.py FileCleanupMixin.save() line 155: `except Exception:` — catches any exception including programming errors; only the pre-save DB read is protected, so a misbehaving ORM or DB connectivity error is silently swallowed",
+        "base/models/mixins.py FileCleanupMixin._delete_files() line 184: `with suppress(Exception):` — file deletion errors are fully silenced with no logging; a failed file cleanup goes unnoticed",
+        "base/models/organizer.py check_access_permissions() line 48: `raise Exception(...)` — generic Exception raised with a translated string, violating agents.md rule 3 ('preserve specific exception types; do not replace with generic Exception'); a TODO comment acknowledges this",
+        "base/signals.py check_plugin_active() — returns bool without raising; calling code in EventPluginSignal.send_robust() uses try/except Exception to catch any receiver error and appends it to results — mixed strategy: some errors propagate, some are collected",
+        "api/views/stripe.py: catches ValueError and stripe.error.SignatureVerificationError specifically — good specific error handling at this boundary",
+        "agenda/views/utils.py load_starred_ics_token() lines 77-80: catches (signing.BadSignature, KeyError, TypeError, ...) specifically — appropriate I/O boundary handling",
+        "control/views/__init__.py LargeResultSetPage.has_next(): bare `except:` (line 94) — catches all exceptions including SystemExit, KeyboardInterrupt; returns False instead of propagating or logging",
+        "base/models/base.py LoggingMixin.log_action() line 112: no exception handling around logentry.save() — a DB write in audit logging can raise unhandled IntegrityError or OperationalError",
+        "base/models/mixins.py LogMixin.log_action() similarly has no exception handling around LogEntry.objects.create()",
+        "base/services/announcement.py: @database_sync_to_async wrapped functions have no exception handling; DoesNotExist from get_announcement() would propagate as an unhandled exception to the Channels consumer",
+        "Multiple files across the codebase (20+ files) use broad `except Exception` — mechanical scan confirms 338 smell findings; while some are intentional (top-level Celery task handlers), many are in business logic paths",
+        "Webhook delivery (api/webhooks.py): 7 pretix.* references detected by grep; error handling strategy for failed webhook HTTP calls is unclear from seed file evidence"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "error_consistency": {
+      "strengths": [
+        "I/O boundary handlers (stripe webhook, starred-ICS token, DRF viewsets) use specific exception types appropriately",
+        "FileCleanupMixin.save() does use try/except to isolate the pre-save DB read from the actual save path — the intent is correct even if the scope is too broad",
+        "IntegrityError is handled specifically in GenerateCode.save() with a retry loop — shows awareness of specific failure modes"
+      ],
+      "issue_character": "Error handling is inconsistent in both direction (some code swallows silently, some propagates, some uses generic Exception) and granularity (specific exception types at API boundaries but bare except/suppress(Exception) in core model mixins), with a documented violation of the agents.md rule against generic Exception raises.",
+      "score_rationale": "The codebase has clearly designed error handling in view/API layers but exhibits systemic error swallowing and generic catches in the model and mixin layers, which are exactly the paths where predictable failure modes matter most. The explicit TODO acknowledging a generic Exception raise in organizer.py, the bare except in LargeResultSetPage, and the suppress(Exception) in file cleanup collectively show the issue is pattern-level, not isolated. With 338 smell findings from the detector and several confirmed broad-catch violations in high-traffic code paths, this scores substantially below the midrange anchor."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-001",
+      "summary": "FileCleanupMixin._delete_files() uses suppress(Exception), silently swallowing file deletion errors with no logging",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "Line 184: `with suppress(Exception):` around `value.delete(save=False)` — any OS, storage backend, or network error during file deletion is silently ignored",
+        "No logger.warning() or logger.error() call before or inside the suppress block"
+      ],
+      "suggestion": "Replace suppress(Exception) with a specific catch for (OSError, FileNotFoundError, SuspiciousFileOperation) and add logger.warning() so deletion failures are at least observable in logs",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-002",
+      "summary": "check_access_permissions() in organizer.py raises generic Exception with a translated string, violating agents.md error handling rule",
+      "related_files": [
+        "app/eventyay/base/models/organizer.py"
+      ],
+      "evidence": [
+        "Line 48: `raise Exception(_(\"There must be at least one team...\"))` — with a TODO comment acknowledging this should use a concrete exception type",
+        "agents.md rule 3: 'preserve specific exception types; do not replace with generic Exception'"
+      ],
+      "suggestion": "Define a PermissionConfigurationError or reuse Django's ValidationError / PermissionDenied and raise that instead of bare Exception",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-003",
+      "summary": "LargeResultSetPage.has_next() uses bare `except:` catching all exceptions including SystemExit and KeyboardInterrupt",
+      "related_files": [
+        "app/eventyay/control/views/__init__.py"
+      ],
+      "evidence": [
+        "control/views/__init__.py lines 92-95: `try: return self[self.paginator.per_page - 1] except: return False` — bare except with no logging, no specific exception type"
+      ],
+      "suggestion": "Replace bare except with `except (IndexError, StopIteration): return False` which captures the expected out-of-bounds case without masking fatal exceptions",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-004",
+      "summary": "base/services/announcement.py @database_sync_to_async functions expose DoesNotExist to Channels consumers without handling",
+      "related_files": [
+        "app/eventyay/base/services/announcement.py"
+      ],
+      "evidence": [
+        "get_announcement(pk, event): `Announcement.objects.get(pk=pk, event=event)` — raises DoesNotExist if pk is invalid, which propagates as an unhandled exception to the Channels WebSocket consumer",
+        "update_announcement(): same pattern — `Announcement.objects.get(pk=kwargs.pop('id'), event=kwargs.pop('event'))` with no DoesNotExist handling"
+      ],
+      "suggestion": "Wrap get() calls with try/except Announcement.DoesNotExist and raise a domain-appropriate exception (e.g., ValueError or a custom ChannelError) that the consumer can handle cleanly",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-005",
+      "summary": "LoggingMixin.log_action() and LogMixin.log_action() have no exception handling around the LogEntry.objects.create() / logentry.save() DB write",
+      "related_files": [
+        "app/eventyay/base/models/base.py",
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "base.py LoggingMixin.log_action() lines 93-118: logentry.save() is called with no try/except",
+        "mixins.py LogMixin.log_action() LogEntry.objects.create() is called with no try/except",
+        "A DB constraint violation in audit logging would propagate as an uncaught IntegrityError to the business operation that triggered it"
+      ],
+      "suggestion": "Wrap the DB write in try/except (IntegrityError, OperationalError) and log at ERROR level if the audit entry cannot be written; this prevents audit logging failures from aborting business transactions",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The model mixin layer (FileCleanupMixin, LogMixin, LoggingMixin) was written without consistent error contract design — each mixin author made independent decisions about swallowing vs. propagating",
+      "The generic Exception raise in organizer.py and bare except in views/__init__.py suggest copy-paste from legacy pretix code where the convention was different"
+    ],
+    "likely_symptoms": [
+      "err-001 and err-003 are the highest-impact, most likely to cause invisible production failures",
+      "err-002 is a policy violation but low operational risk since it is only reached on team permission changes"
+    ],
+    "possible_false_positives": [
+      "FileCleanupMixin.save()'s `except Exception` on the pre-save read is intentional: if the object doesn't exist yet (race condition), skip cleanup — the broad catch is arguably acceptable here, though DoesNotExist would be more precise"
+    ]
+  }
+}

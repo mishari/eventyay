@@ -1,0 +1,120 @@
+{
+  "batch": "naming_quality",
+  "batch_index": 5,
+  "assessments": {
+    "naming_quality": 65.0
+  },
+  "dimension_notes": {
+    "naming_quality": {
+      "evidence": [
+        "Domain nouns are generally well-chosen: Order, Invoice, Voucher, Submission, Review, TalkSlot, Schedule, CheckinList communicate intent clearly",
+        "View class names are descriptive and action-oriented: ScheduleFeed, ScheduleMixin, ShredderMixin, GlobalSettingsView, StartShredView, ShredDownloadView",
+        "Signal names in base/signals.py are clear and domain-specific: order_placed, order_paid, order_canceled, checkin_created, event_live_issues, validate_order, validate_cart",
+        "base/models/mixins.py: LogMixin.log_action() is well-named. FileCleanupMixin._delete_files(), assign_code(), generate_code() are all self-explanatory",
+        "check_plugin_active() (signals.py) is a good predicate name with boolean semantics",
+        "SENSITIVE_KEYS constant in mixins.py is clear; it is also redefined inline as 'sensitive_keys' in the same function — the local redefinition adds noise",
+        "LogMixin.log_action() has an 'orga' boolean parameter — abbreviated name that is used as a project-wide convention (seen in LogEntry.is_orga_action), acceptable as established convention",
+        "BBBCall model: 'attendee_pw' and 'moderator_pw' — 'pw' is an abbreviation not matching codebase conventions that prefer full words (e.g., 'password')",
+        "BBBServer.rooms_only — name is ambiguous; it is unclear from the name whether it means 'only available to rooms' or 'only creates rooms'; a more descriptive name would improve clarity",
+        "consts.py: SizeKey enum members named UPLOAD_SIZE_CSV, RESPONSE_SIZE_WEBHOOK — these are clear and well-structured",
+        "agenda/views/utils.py: redirect_to_presale_with_warning() is overly specific as a utility name but accurately describes behavior; escape_json_for_script() and is_public_schedule_empty() are clear predicate/action names",
+        "FileCleanupMixin.process_image() — generic verb 'process' reveals nothing about what processing occurs (thumbnail generation? format conversion?); the method delegates to task_process_image, which suggests 'process' here means 'trigger async processing'",
+        "LogMixin._get_attribute() — internal helper with a generic name; 'resolve_dotted_attribute' or '_resolve_url_path' would be more specific",
+        "LogMixin.move.alters_data = True — annotating an attribute on a method is non-standard Django ORM usage; the method name 'move' is fine but the pattern is unusual",
+        "base/models/base.py LockModel.refresh_for_update() — good name, clearly communicates select_for_update semantics",
+        "control/views/shredder.py: StartShredView — 'start shred' clearly communicates intent"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "naming_quality": {
+      "strengths": [
+        "Domain model names (Order, Invoice, Submission, Review, TalkSlot, CheckinList) are precise and match domain vocabulary",
+        "Signal names in base/signals.py are consistent verb_noun patterns (order_placed, checkin_created, validate_cart) that clearly communicate event semantics",
+        "View and mixin class names are action-oriented and self-describing (ShredDownloadView, StartShredView, GlobalSettingsView, ScheduleMixin)"
+      ],
+      "issue_character": "Naming issues are isolated to a small number of generic verbs and ambiguous abbreviations rather than systemic problems; the most significant finding is process_image() in FileCleanupMixin which uses a generic verb, and the pw abbreviation in BBBCall which is inconsistent with the codebase's preference for full words.",
+      "score_rationale": "The codebase demonstrates generally good naming discipline at the domain model and signal level. Issues are concentrated in a few utility helpers (process_image, _get_attribute) and the BBBCall model fields (pw, rooms_only). The SENSITIVE_KEYS constant being redefined inline as 'sensitive_keys' is a minor inconsistency. None of these are severe enough to drop below the midrange anchor — the codebase earns a mid-65 score, reflecting adequate naming with identifiable but limited outliers."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-001",
+      "summary": "FileCleanupMixin.process_image() uses generic verb 'process' without revealing what processing is performed",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "mixins.py lines 191-202: `def process_image(self, field, generate_thumbnail=False)` — delegates entirely to `task_process_image.apply_async()`",
+        "The method does nothing except queue a Celery task; 'process' could mean resize, format-convert, validate, etc."
+      ],
+      "suggestion": "Rename to `schedule_image_processing()` or `queue_image_task()` to communicate the asynchronous-dispatch intent rather than the vague 'process'",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-002",
+      "summary": "BBBCall model fields 'attendee_pw' and 'moderator_pw' use 'pw' abbreviation inconsistent with codebase full-word convention",
+      "related_files": [
+        "app/eventyay/base/models/bbb.py"
+      ],
+      "evidence": [
+        "bbb.py lines 32-33: `attendee_pw = models.CharField(...)` and `moderator_pw = models.CharField(...)` — 'pw' abbreviation",
+        "Codebase convention uses full words: Order.secret, User.password, BBBServer.secret — no other 'pw' abbreviations found"
+      ],
+      "suggestion": "Rename to 'attendee_password' and 'moderator_password' with a database migration",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-003",
+      "summary": "SENSITIVE_KEYS constant is defined at module level then redefined as 'sensitive_keys' (local variable) inside log_action(), duplicating the same data",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "mixins.py line 12: `SENSITIVE_KEYS = ['password', 'secret', 'api_key']` at module level",
+        "mixins.py line 86: `sensitive_keys = ['password', 'secret', 'api_key']` inside log_action() — identical list, different name casing"
+      ],
+      "suggestion": "Remove the inline local redefinition; reference the module-level SENSITIVE_KEYS constant inside log_action()",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-004",
+      "summary": "OrderedModel._get_attribute() uses generic name for a method that resolves a dotted attribute path",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "mixins.py lines 276-280: `def _get_attribute(self, attribute):` — resolves dotted string paths like 'urls.up' via repeated getattr; name gives no hint of the dotted-path semantics"
+      ],
+      "suggestion": "Rename to `_resolve_dotted_attr()` or `_traverse_attribute_path()` to communicate the dotted-path traversal intent",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The BBBCall pw abbreviation originates from the BigBlueButton API which uses 'pw' in its own API parameters — the model mirrors the external API vocabulary, which is a defensible choice but diverges from internal naming norms",
+      "The SENSITIVE_KEYS duplication likely results from LogMixin and LoggingMixin being developed independently and merged without a cleanup pass"
+    ],
+    "likely_symptoms": [
+      "name-003 is a symptom of the LogMixin/LoggingMixin duplication (arch-002, conv-003)"
+    ],
+    "possible_false_positives": [
+      "The 'orga' parameter abbreviation in log_action() is used as an established convention across the entire codebase (is_orga_action field, orga parameter in many views) — this is a project convention with 50+ usages, not an outlier"
+    ]
+  }
+}

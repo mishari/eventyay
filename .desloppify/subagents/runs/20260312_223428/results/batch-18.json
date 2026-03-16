@@ -1,0 +1,144 @@
+{
+  "batch": "contract_coherence",
+  "batch_index": 18,
+  "assessments": {
+    "contract_coherence": 68.0
+  },
+  "dimension_notes": {
+    "contract_coherence": {
+      "evidence": [
+        "BasePaymentProvider.execute_payment is declared '-> str' but its default implementation returns None (line 690 of base/payment.py), and the docstring explicitly states 'The default implementation just returns None'",
+        "BasePaymentProvider.new_refund_control_form_render is declared '-> str' but the docstring says 'This method should return HTML or None' and the default implementation is bare 'return' (returns None implicitly), line 859",
+        "User.get_short_name() -> str can return None: both fullname and email are nullable (null=True on model fields), so the 'else: return self.email' branch returns None when email is None",
+        "User.get_full_name() -> str suffers the same lie: when fullname, wikimedia_username, and email are all None, it returns None",
+        "Order.meta_info_data (cached_property) returns {} on missing data, but returns None on a TypeError from json.loads — inconsistent: callers expecting a dict silently get None on corrupt data",
+        "mail() docstring says ':raises MailOrderException:' but the actual exception class is SendMailException (line 66 of base/services/mail.py); no MailOrderException exists in the codebase",
+        "User.get_session_auth_hash docstring says 'Return an HMAC that needs to' — truncated, never finished; the contract is undocumented",
+        "get_schedule_exporter_content returns None on exporter-not-found, None on render failure, HttpResponseRedirect on token flow, HttpResponseNotModified on cache hit, or HttpResponse with content — five distinct return shapes with no annotation",
+        "BasePaymentProvider._detect_event (presale/utils.py) returns None normally but returns redirect responses in multiple branches — callers must know to check the return value to avoid processing a redirect as success"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "contract_coherence": {
+      "strengths": [
+        "Core service functions like reactivate_order, extend_order, approve_order consistently raise OrderError on failure rather than silently returning None — callers can trust the raise-or-return contract",
+        "The load_starred_ics_token / parse_ics_token pair is cleanly documented: the tuple return on success vs (None, None) on failure is explicit in the docstring and consistent at all exit points",
+        "BasePaymentProvider methods that are meant to be overridden use raise NotImplementedError() with a NOQA marker, making the extensibility contract clear",
+        "ImportColumn base class documents default_value and related properties with short, accurate docstrings that match actual behavior",
+        "LazyRuleVars.__getitem__ contract (raise KeyError for private items) matches its implementation exactly"
+      ],
+      "issue_character": "The issues cluster around return type annotations that lie — either the declared type is str but None is explicitly returned by the default implementation, or the function returns multiple incompatible types with no annotation at all — most visibly in BasePaymentProvider and User.",
+      "score_rationale": "The codebase has a reliable pattern in business-logic services: raise-or-return contracts are honored. However, the plugin extension layer (BasePaymentProvider) has systematic return-type annotation lies that subclass authors will hit immediately — execute_payment promises str but delivers None by default, and new_refund_control_form_render duplicates the same pattern. User.get_short_name and get_full_name falsely promise str while model fields are nullable, which is a high-import-count model (6 importers). The mail() docstring names a nonexistent exception class. These are concentrated contract failures in the two most developer-facing extension points (payment providers and the User model), making the overall score fall into the 60–70 range — solid business logic services pull it toward 70, but developers extending payments or using User name methods will be misled."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "contract_coherence",
+      "identifier": "execute_payment_return_type_lie",
+      "summary": "BasePaymentProvider.execute_payment declared -> str but default implementation returns None",
+      "related_files": ["app/eventyay/base/payment.py"],
+      "evidence": [
+        "Line 666: def execute_payment(self, request: HttpRequest, payment: OrderPayment) -> str:",
+        "Line 690: return None",
+        "Docstring explicitly states 'The default implementation just returns None and therefore leaves the order unpaid'"
+      ],
+      "suggestion": "Change the return annotation to '-> Optional[str]' (or 'str | None') to match the documented and implemented behavior where None signals 'use default redirect' and a string signals a custom URL.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "payment_provider_annotation_lies"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "new_refund_render_return_type_lie",
+      "summary": "BasePaymentProvider.new_refund_control_form_render declared -> str but docstring and default implementation return None",
+      "related_files": ["app/eventyay/base/payment.py"],
+      "evidence": [
+        "Line 845: def new_refund_control_form_render(self, request: HttpRequest, order: Order) -> str:",
+        "Line 857: docstring says 'This method should return HTML or None'",
+        "Line 859: bare 'return' statement (returns None implicitly)"
+      ],
+      "suggestion": "Change the return annotation to '-> str | None' to match both the docstring and the default implementation. Callers in the control views that render this output already guard for None.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "payment_provider_annotation_lies"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "user_get_short_name_nullable_return",
+      "summary": "User.get_short_name() -> str can return None when both fullname and email fields are None",
+      "related_files": ["app/eventyay/base/models/auth.py"],
+      "evidence": [
+        "Line 349: def get_short_name(self) -> str:",
+        "Line 361: return self.email  — email is declared 'null=True, blank=True' on the model field",
+        "When fullname is None (null=True) and email is None, function returns None contrary to -> str annotation"
+      ],
+      "suggestion": "Change return annotation to '-> str | None' or guard the fallback: 'return self.email or \"\"'. The __str__ method already handles the multi-field fallback correctly; get_short_name should do the same.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "user_nullable_name_return_lies"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "user_get_full_name_nullable_return",
+      "summary": "User.get_full_name() -> str can return None when fullname, wikimedia_username, and email are all None",
+      "related_files": ["app/eventyay/base/models/auth.py"],
+      "evidence": [
+        "Line 363: def get_full_name(self) -> str:",
+        "Line 376: return self.email  — email is null=True on the model",
+        "All three fields (fullname, wikimedia_username, email) are nullable; the final else branch returns None"
+      ],
+      "suggestion": "Return 'self.email or \"\"' as the final fallback, or annotate '-> str | None'. The safer fix is to return an empty string rather than None, consistent with Django's AbstractBaseUser convention.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "user_nullable_name_return_lies"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "meta_info_data_inconsistent_return",
+      "summary": "Order.meta_info_data returns {} on missing data but None on JSON parse TypeError, surprising callers who expect a dict",
+      "related_files": ["app/eventyay/base/models/orders.py"],
+      "evidence": [
+        "Lines 301-307: if not self.meta_info: return {}; try: return json.loads(self.meta_info); except TypeError: return None",
+        "Missing-data path returns an empty dict; corrupt-data path returns None — callers cannot use the result uniformly without a None check"
+      ],
+      "suggestion": "Return an empty dict on TypeError as well: 'except TypeError: return {}'. This makes the contract consistent (always dict) and allows callers to use dict methods without a None guard.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "mail_docstring_wrong_exception_name",
+      "summary": "mail() docstring documents ':raises MailOrderException:' but the actual raised exception is SendMailException",
+      "related_files": ["app/eventyay/base/services/mail.py"],
+      "evidence": [
+        "Line 134: ':raises MailOrderException: on obvious, immediate failures.'",
+        "Line 66: 'class SendMailException(Exception)' — no MailOrderException exists in the codebase",
+        "Callers catching MailOrderException will silently miss actual SendMailException errors"
+      ],
+      "suggestion": "Correct the docstring to ':raises SendMailException: on obvious, immediate failures.' to match the actual exception class.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "BasePaymentProvider was designed as a plugin extension point with methods that intentionally return None as a 'do nothing' sentinel, but annotations were written as -> str without Optional — likely copied from an earlier codebase that used None only for subclass-overrideable stubs",
+      "User model fields are nullable by design (anonymous/kiosk users may lack email), but the name-returning methods predate this nullable expansion and were never updated to handle None returns"
+    ],
+    "likely_symptoms": [
+      "meta_info_data_inconsistent_return",
+      "mail_docstring_wrong_exception_name"
+    ],
+    "possible_false_positives": []
+  }
+}

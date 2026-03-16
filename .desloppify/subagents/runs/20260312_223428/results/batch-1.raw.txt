@@ -1,0 +1,181 @@
+{
+  "batch": "cross_module_architecture",
+  "batch_index": 1,
+  "assessments": {
+    "cross_module_architecture": 48.0
+  },
+  "dimension_notes": {
+    "cross_module_architecture": {
+      "evidence": [
+        "base/models/room.py line 13: top-level `from eventyay.api.serializers.i18n import I18nAwareModelSerializer` — a domain model importing an API serializer at module scope, reversing the dependency direction",
+        "base/models/devices.py line 10: top-level `from eventyay.api.auth.devicesecurity import DEVICE_SECURITY_PROFILES` — core model importing from api authentication layer",
+        "base/models/auth_token.py line 10: top-level `from eventyay.api.versions import CURRENT_VERSIONS` — core model tightly coupled to API versioning",
+        "base/configurations/default_setting.py lines 22-26 and 40-44: top-level imports of `eventyay.api.serializers.fields`, `eventyay.api.serializers.i18n`, and `eventyay.control.forms` — base configuration imports from both api and control layers",
+        "base/shredder.py lines 13-17: top-level imports from `eventyay.api.serializers.order` and `eventyay.api.serializers.waitinglist`",
+        "base/payment.py lines 47-48: top-level `from eventyay.presale.views import get_cart, get_cart_total` and `from eventyay.presale.views.cart import cart_session, get_or_create_cart_id` — core payment abstraction importing from presale view layer",
+        "base/services/cart.py line 46: top-level `from eventyay.presale.signals import ...` — core service importing signals from the presale presentation layer",
+        "base/services/mail.py line 54: top-level `from eventyay.presale.ical import get_ical` — core mail service importing from presale",
+        "base/pdf.py line 45: top-level `from eventyay.presale.style import get_fonts` — core PDF renderer importing from presale style layer",
+        "base/models/schedule.py lines 22-31: top-level imports from `eventyay.agenda.tasks`, `eventyay.agenda.signals`, `eventyay.schedule.notifications`, `eventyay.schedule.signals`, and multiple `eventyay.talk_rules.*` — the Schedule domain model is hard-coupled to the agenda, schedule, and talk_rules application layers",
+        "base/models/organizer.py lines 23-29: top-level import of `eventyay.talk_rules.event` predicates — Organizer domain model importing from business-rule overlay package",
+        "base/models/room.py lines 20-22: top-level imports from `eventyay.talk_rules.agenda`, `eventyay.talk_rules.event`, and `eventyay.talk_rules.submission`",
+        "base/models/mixins.py lines 51-52 (deferred): `from eventyay.api.models import OAuthAccessToken, OAuthApplication` and `from eventyay.api.webhooks import notify_webhooks` inside log_action() — cycle pressure requiring deferred resolution",
+        "base/models/base.py lines 64-65 (deferred): same deferred pattern as mixins.py for the same reasons — duplicated log_action implementations in both LoggingMixin (base.py) and LogMixin (mixins.py)",
+        "control/views/__init__.py has its own PaginationMixin class (DEFAULT_PAGINATION=25) while common/views/mixins.py has a different PaginationMixin (DEFAULT_PAGINATION=50) — same abstraction duplicated with different defaults, neither cross-referencing the other",
+        "talk_rules/*.py functions use deferred `from eventyay.base.models import Event` inside function bodies (talk_rules/event.py line 11) — talk_rules must defer its own base-model imports to avoid circularity it introduced"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "cross_module_architecture": {
+      "strengths": [
+        "The `talk_rules` package cleanly isolates `rules` predicate definitions from model methods, preventing direct rules logic from accumulating in model files",
+        "Django signals are used consistently as the cross-module coordination mechanism for plugin extensibility, which is appropriate for the framework",
+        "Deferred local imports are used in several cycle-prone spots (LogMixin.log_action, FileCleanupMixin.process_image) to avoid import-time failures — the pattern is applied consistently where cycles exist",
+        "The `base/models/__init__.py` re-export surface is large but has a clear `__all__` list, making the intended public API explicit"
+      ],
+      "issue_character": "The issues are systemic and directional: the `base` package — which should be the foundation layer — has grown widespread hard upward imports into `api`, `presale`, `control`, `agenda`, `schedule`, and `talk_rules`, collapsing the layered dependency hierarchy and creating reciprocal coupling across almost every subsystem pair.",
+      "score_rationale": "The codebase scores in the 40–60 range ('significant drag' to 'poor') on this dimension. The dependency direction violations are not isolated edge cases — they span multiple files in the `base` package that import from `api`, `presale`, `control`, and application-layer packages at module scope. This means changing any of those upstream packages can break core models, and the `base` package cannot be loaded independently for testing without pulling in the entire application stack. The `LoggingMixin`/`LogMixin` duplication and the `PaginationMixin` duplication compound this by showing missing shared boundaries. The deferred imports in `log_action` are a symptom of the same root cause. A developer cannot make changes in `api`, `presale`, or `control` without tracing ripple effects into `base`, nor can they trust dependency direction from any architectural diagram. A score of 48 reflects that some structural choices (signals for plugin dispatch, talk_rules isolation) are sound, but the overall boundary integrity is severely compromised."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "base_imports_api_models_toplevel",
+      "summary": "base model and config files import from eventyay.api at module scope, inverting the dependency hierarchy",
+      "related_files": [
+        "app/eventyay/base/models/room.py",
+        "app/eventyay/base/models/devices.py",
+        "app/eventyay/base/models/auth_token.py",
+        "app/eventyay/base/configurations/default_setting.py",
+        "app/eventyay/base/shredder.py"
+      ],
+      "evidence": [
+        "base/models/room.py line 13: `from eventyay.api.serializers.i18n import I18nAwareModelSerializer` — Room is a domain model but its definition depends on an API serializer class",
+        "base/models/devices.py line 10: `from eventyay.api.auth.devicesecurity import DEVICE_SECURITY_PROFILES` — Device model depends on API auth configuration",
+        "base/models/auth_token.py line 10: `from eventyay.api.versions import CURRENT_VERSIONS` — token model hard-coupled to API version list",
+        "base/configurations/default_setting.py lines 22-26: `from eventyay.api.serializers.fields import ListMultipleChoiceField, UploadedFileField` and `from eventyay.api.serializers.i18n import I18nField, I18nURLField` — base settings configuration imports API serializer types",
+        "base/shredder.py lines 13-17: `from eventyay.api.serializers.order import ...` and `from eventyay.api.serializers.waitinglist import WaitingListSerializer`"
+      ],
+      "suggestion": "Extract `I18nAwareModelSerializer` and its i18n helpers to a shared `eventyay.common.serializers` or `eventyay.base.serializers` module so that both `base` models and `api` serializers import from a neutral location. Move `DEVICE_SECURITY_PROFILES` to `base/models/devices.py` or a `base/auth_profiles.py` constant file. Move `CURRENT_VERSIONS` to a standalone `eventyay.api.versions` that has no base dependency, and import the constant into base via a base-owned adapter. For shredder, extract the data-shape logic it needs into a `base`-owned DTO rather than importing API serializers.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_upstream_coupling"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "base_imports_presale_toplevel",
+      "summary": "Core base services and payment abstraction import directly from presale view and signal layers at module scope",
+      "related_files": [
+        "app/eventyay/base/payment.py",
+        "app/eventyay/base/services/cart.py",
+        "app/eventyay/base/services/mail.py",
+        "app/eventyay/base/pdf.py",
+        "app/eventyay/base/views/mixins.py"
+      ],
+      "evidence": [
+        "base/payment.py lines 47-48: `from eventyay.presale.views import get_cart, get_cart_total` and `from eventyay.presale.views.cart import cart_session, get_or_create_cart_id` — the payment base class depends on presale view utilities",
+        "base/services/cart.py line 46: `from eventyay.presale.signals import ...` — the core cart service imports signals from the presale layer",
+        "base/services/mail.py line 54: `from eventyay.presale.ical import get_ical`",
+        "base/pdf.py line 45: `from eventyay.presale.style import get_fonts`",
+        "base/views/mixins.py line 24: `from eventyay.presale.signals import contact_form_fields_overrides`"
+      ],
+      "suggestion": "Move `get_cart`, `get_cart_total`, `cart_session`, and `get_or_create_cart_id` to `base/services/cart.py` (they are cart service functions, not view-layer utilities). Move the presale signals that base services need to `base/signals.py` so that presale registers them as receivers rather than base importing from presale. Move `get_fonts` to a `base/style.py` and have presale import from there. Move `get_ical` to a `base/ical.py` module.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_upstream_coupling"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "base_schedule_model_imports_agenda_layer",
+      "summary": "base/models/schedule.py imports from agenda tasks, agenda signals, schedule notifications, and schedule signals at module scope",
+      "related_files": [
+        "app/eventyay/base/models/schedule.py"
+      ],
+      "evidence": [
+        "Line 22: `from eventyay.agenda.tasks import export_schedule_html`",
+        "Line 23: `from eventyay.agenda.signals import register_recording_provider`",
+        "Line 26: `from eventyay.schedule.notifications import render_notifications`",
+        "Line 27: `from eventyay.schedule.signals import schedule_release`",
+        "Lines 28-31: imports of `can_view_schedule`, `is_agenda_visible`, `is_widget_visible`, `can_view_speaker_names`, `is_reviewer`, `is_wip`, `orga_can_change_submissions` from `talk_rules.*`"
+      ],
+      "suggestion": "The Schedule model should own only data and pure domain logic. Move the signal-dispatch calls (`export_schedule_html.apply_async`, `schedule_release.send`) to a `schedule/services.py` layer and have `base/models/schedule.py` emit a `post_save` Django signal that `schedule/services.py` listens to. Move the permission predicates that the model uses for its methods to be tested via `rules` decorators on views/API endpoints rather than embedded in model methods. This removes the need for the talk_rules and agenda imports entirely from the model file.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_upstream_coupling"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "log_action_duplicate_implementations",
+      "summary": "LoggingMixin in base/models/base.py and LogMixin in base/models/mixins.py both implement log_action with nearly identical logic and both require deferred api imports",
+      "related_files": [
+        "app/eventyay/base/models/base.py",
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "base/models/base.py lines 40-120: LoggingMixin.log_action with deferred imports of OAuthAccessToken, OAuthApplication, notify_webhooks at lines 64-65",
+        "base/models/mixins.py lines 27-115: LogMixin.log_action with the same deferred imports at lines 51-52",
+        "Both methods have identical auth/token type-dispatch logic (OAuthAccessToken → oauth_application, TeamAPIToken → api_token, Device → device) and the same sensitive-key sanitization",
+        "The deferred import of `eventyay.api.models` inside both implementations is a symptom: the base model layer needs OAuth types to classify log entries, but can't import api at module scope due to the cycle this creates"
+      ],
+      "suggestion": "Consolidate into a single `LoggingMixin` in `base/models/mixins.py` and remove `LoggingMixin` from `base/models/base.py`. Then address the root cycle: define a protocol/interface in `base` for auth token types (e.g. a `LoggableAuthToken` protocol) and have OAuthAccessToken/TeamAPIToken implement it, removing the need to import concrete api types into base log_action.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_upstream_coupling"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "pagination_mixin_duplication",
+      "summary": "PaginationMixin is independently defined in both control/views/__init__.py and common/views/mixins.py with divergent defaults and no cross-reference",
+      "related_files": [
+        "app/eventyay/control/views/__init__.py",
+        "app/eventyay/common/views/mixins.py"
+      ],
+      "evidence": [
+        "control/views/__init__.py lines 49-67: PaginationMixin with DEFAULT_PAGINATION=25 and get_paginate_by logic including page_size capping at 250",
+        "common/views/mixins.py lines 341-365: PaginationMixin with DEFAULT_PAGINATION=50 that also stores page size in session, supports max_page_size override, and has extra context data logic",
+        "Neither implementation imports from the other; control views and common views both use their respective copies independently"
+      ],
+      "suggestion": "Remove the PaginationMixin from control/views/__init__.py and have control views import from eventyay.common.views.mixins.PaginationMixin. Reconcile the default (25 vs 50) by making DEFAULT_PAGINATION a class attribute that subclasses override, keeping 25 for control and 50 as the common default.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_shared_boundary"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "base_configurations_imports_control_forms",
+      "summary": "base/configurations/default_setting.py imports form widget classes from eventyay.control at module scope",
+      "related_files": [
+        "app/eventyay/base/configurations/default_setting.py"
+      ],
+      "evidence": [
+        "Lines 40-44: `from eventyay.control.forms import ExtFileField, FontSelect, MultipleLanguagesWidget, SingleLanguageWidget` — the base settings definition file has a hard dependency on control-layer form widgets"
+      ],
+      "suggestion": "Move `ExtFileField`, `FontSelect`, `MultipleLanguagesWidget`, and `SingleLanguageWidget` to `eventyay.common.forms` or `eventyay.base.forms` so that base configurations can import them without crossing into the control layer. The control forms module can then re-export these from the shared location for backward compatibility.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_shared_boundary"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The `base` package accumulated responsibility for both domain models and cross-cutting infrastructure (logging, payment, PDF, mail) without a stable boundary policy, allowing imports from any downstream layer once a feature needed it",
+      "The `talk_rules` package was introduced as a permission-predicate overlay but its predicates were embedded into model methods rather than kept in the view/permission-check layer, creating permanent model-to-talk_rules coupling",
+      "There is no enforced layering contract (e.g. no import-linter configuration) preventing base from importing upward, so each individual developer decision to grab a function from presale or api seemed locally reasonable but accumulated into a systemic violation"
+    ],
+    "likely_symptoms": [
+      "The deferred imports in LogMixin/LoggingMixin (base imports api inside function bodies) are a symptom of the cycle created by base importing api at module scope in other files",
+      "The `talk_rules` deferred import of `Event` (get_events_for_user in talk_rules/event.py) is a symptom of the cycle created by base/models importing from talk_rules"
+    ],
+    "possible_false_positives": []
+  }
+}

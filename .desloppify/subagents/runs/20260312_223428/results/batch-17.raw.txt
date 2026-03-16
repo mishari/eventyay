@@ -1,0 +1,562 @@
+{
+  "batch": "design_coherence",
+  "batch_index": 17,
+  "assessments": {
+    "design_coherence": 59.0
+  },
+  "dimension_notes": {
+    "design_coherence": {
+      "evidence": [
+        "ExportersMixin (api/views/exporters.py) is a well-designed split: the mixin defines protocol methods (list, get_object, retrieve, download, run) that depend on concrete subclass state (exporters, do_export, get_serializer_kwargs) via an implicit contract. The coupling is intentional — Django class-based view mixins routinely rely on attributes provided by concrete classes. The pattern is consistent with how Django ViewSets are composed.",
+        "control/views/__init__.py mixes two distinct concerns: (1) it defines base view utilities (EventBasedFormMixin, PaginationMixin, LargeResultSetPage, LargeResultSetPaginator) and (2) it acts as a backward-compat re-export barrel for admin_views.py content. These two roles should be in separate files.",
+        "presale/views/__init__.py is coherent as a module — it defines cart utility functions, cart-related mixins, and iframe/CORS decorators that are all used by the presale views. The concern signal for coupling and size is a false positive; the file has a single coherent domain.",
+        "control/logdisplay.py: the _display_order_changed function is an enormous if-elif chain dispatching on action_type strings to produce human-readable descriptions. This is fundamentally a data-driven dispatch problem: the case list now spans hundreds of lines with repeated structure (load data, format message with money_filter). The repeated structural pattern (at least 15 branches, each loading a JSON dict and formatting a localized string) should be a data-driven registry (a dict mapping action_type -> format_spec), not a flat if-elif chain. This is the clearest design_coherence violation in the codebase.",
+        "base/services/orders.py at 2856 LOC with complexity score 266 is a genuine fat service module. It mixes order-lifecycle state transitions (reactivate, extend, mark_refunded), Celery task definitions, signal dispatch, and invoice generation side-effects in the same module. Functions like _create_order mix checkout validation, quota checking, voucher redemption, and side-effect chains (invoice, email, gift card). This is multi-responsibility, not domain complexity.",
+        "base/email.py at 832 LOC mixes three distinct concerns: SendGrid-specific email sending (SendGridEmail class), SMTP email backend customization (CustomSMTPBackend, FileSavedEmailBackend), and mail renderer/placeholder infrastructure (ClassicMailRenderer, get_email_context, register_mail_placeholders). These should be separate files.",
+        "control/navigation.py at 633 LOC is a repeated structural pattern: get_event_navigation, get_organizer_navigation, and get_global_navigation each build navigation arrays by appending dicts with the same shape {label, url, active, icon, ...} under permission checks. This is purely data-driven work and would be cleaner as a declarative nav registry with conditional rendering rules, rather than 600+ lines of procedural appending.",
+        "agenda/views/utils.py (261 LOC, flagged as orphaned) is actually imported by agenda views via relative import — the orphan detector false-positives because relative imports don't show up as explicit importers. The file has legitimate content (ICS token validation, export helpers, ETag computation).",
+        "base/views/mixins.py (335 LOC, flagged as orphaned) is clearly not orphaned — it defines BaseQuestionsViewMixin and OrderQuestionsViewMixin that are used by presale checkout and order views. The orphan detector missed indirect imports via mixin inheritance resolution.",
+        "presale/views/cart.py CartMixin.get_cart method (lines 68-252) has a single long keyfunc that returns very different tuple lengths for ungroupable vs groupable positions: the groupable path returns 13-element tuples while ungrouped positions return 3-element tuples padded with zeros. This is an implicit API (the returned tuple's semantic meaning changes shape based on content) that makes the groupby logic fragile.",
+        "control/forms/widgets.py (54 LOC) is flagged as orphaned but IS imported by 8 files via relative `from .widgets import Select2`. The detector only traces absolute import paths.",
+        "schedule/forms.py (243 LOC) is flagged as orphaned but IS imported by 3 files (orga/views/schedule.py, cfp/views/user.py, person/forms/profile.py). Legitimate active code.",
+        "plugins/sendmail/mixins.py is imported by plugins/sendmail/views.py. Not orphaned — it provides CopyDraftMixin and QueryFilterOrderingMixin, both coherent single-purpose mixins with clean design.",
+        "agenda/apps.py, agenda/permissions.py, agenda/tasks.py, agenda/urls.py are all loaded by Django's app loading machinery or included into URL configurations, not via Python import — these are correctly structured Django app components. agenda/permissions.py defines rules predicates but is registered at module load via the `rules` library's @rules.predicate decorator, so it needs no explicit importers."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {
+        "abstraction_leverage": 62.0,
+        "indirection_cost": 78.0,
+        "interface_honesty": 70.0,
+        "delegation_density": 55.0,
+        "definition_directness": 48.0,
+        "type_discipline": 58.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "design_coherence": {
+      "strengths": [
+        "Mixin-based composition for view logic (ExportersMixin, CartMixin, BaseQuestionsViewMixin) is used consistently and the implicit host-contract pattern is idiomatic for Django CBVs.",
+        "The services layer (base/services/) is properly separated from models and views, with clear per-domain files (cart.py, orders.py, mail.py).",
+        "Single-responsibility is respected in small/medium modules: sendmail/mixins.py, storage/views.py, schedule/forms.py all have coherent, focused roles.",
+        "The agenda permissions module correctly uses a rules-predicate registry pattern rather than scattering permission logic across views.",
+        "The presale cart pipeline (get_cart, CartMixin.get_cart) handles a genuinely complex grouping/annotation problem in one place rather than scattering it."
+      ],
+      "issue_character": "The dominant issue is that the codebase's largest files mix distinct responsibilities — logdisplay's if-elif action dispatch, email.py's three separate concerns, services/orders.py's mixed lifecycle+task+side-effect responsibilities — rather than splitting by function. Additionally, the navigation and logdisplay modules use repeated structural patterns that beg for a data-driven approach.",
+      "score_rationale": "The codebase demonstrates good design at the module and small-file level but shows persistent multi-responsibility accumulation in its most complex files. control/logdisplay.py's 15+ branch if-elif chain dispatching on string action types is the clearest data-driven pattern refactoring opportunity, and base/email.py bundles SMTP backend, SendGrid adapter, and mail template rendering infrastructure into a single 832-LOC file without domain justification. base/services/orders.py at nearly 3000 LOC mixes order state machine logic with Celery task registration and invoice/email side effects. These are not files that are large because of domain complexity — they are large because they mix unrelated concerns. The codebase sits in the 'functional but structurally stressed' range — better than typical Django apps that let everything accumulate in views.py, but well short of a codebase where each file has a single clear responsibility."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "design_coherence",
+      "identifier": "logdisplay_if_elif_dispatch",
+      "summary": "_display_order_changed uses a 15+ branch if-elif chain on action_type strings instead of a data-driven dispatch table",
+      "related_files": ["app/eventyay/control/logdisplay.py"],
+      "evidence": [
+        "_display_order_changed (logdisplay.py lines 44-200+) dispatches on string action_type via if/elif, with each branch repeating the same pattern: load data dict, resolve related objects, format a localized money/product string.",
+        "At least 15 distinct branches cover: changed.product, changed.seat, changed.subevent, changed.price, changed.tax_rule, changed.addfee, changed.feevalue, changed.cancelfee, changed.cancel, changed.add, changed.secret, changed.split, etc.",
+        "Complexity score of 262 and max chain depth 6 make this the fourth-highest complexity hotspot in the codebase.",
+        "Each new order-change action type requires adding another elif arm to this function rather than registering a handler."
+      ],
+      "suggestion": "Replace the if-elif chain with a dispatch dict mapping action_type string -> callable that receives (event, data) and returns a formatted string. Handlers can be registered per-plugin via a signal or decorator. This matches the existing logentry_display signal pattern already used in the file.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "305512126f26ba19"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "base_email_mixed_concerns",
+      "summary": "base/email.py bundles three unrelated concerns: SendGrid adapter, SMTP backend customization, and mail template/placeholder infrastructure",
+      "related_files": ["app/eventyay/base/email.py"],
+      "evidence": [
+        "SendGridEmail class (lines 47-109) is a complete SendGrid-specific email backend including MIME parsing, attachment building, and BCC handling.",
+        "CustomSMTPBackend (lines 112-126) extends Django's SMTP backend for connection testing.",
+        "FileSavedEmailBackend (lines 129-~200) extends Django's file-based backend with subdirectory organization.",
+        "Further into the file: ClassicMailRenderer, get_email_context, and related placeholder infrastructure appear — a third distinct concern.",
+        "Complexity score 315, LOC 832; flagged by structural detector."
+      ],
+      "suggestion": "Split into at least two files: base/email_backends.py (SendGrid, SMTP, file-based backends) and base/email_context.py (mail renderers, placeholder registration, get_email_context). The backends are swappable infrastructure; the context/renderer code is domain logic.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "services_orders_mixed_responsibilities",
+      "summary": "base/services/orders.py mixes order state machine functions, Celery task registrations, signal dispatch, and invoice side-effects in one 2856-LOC file",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "File contains: module-level error_messages dict, reactivate_order, extend_order, mark_order_refunded, _cancel_order, approve_order, deny_order, send_download_reminders — each a distinct lifecycle operation.",
+        "Also contains Celery task definitions (decorated with @app.task), periodic task receivers, and signal listeners (via @receiver) for order_placed, order_paid, etc.",
+        "Invoice side-effects (generate_invoice, generate_cancellation) are triggered inline within lifecycle functions rather than via signals or a dedicated invoice service.",
+        "Complexity score 266, LOC 2856, flagged as wide_param_bags (7 wide functions), and indirection hotspot (chain_count 566, max_chain_depth 5)."
+      ],
+      "suggestion": "Extract Celery task definitions into base/tasks/orders.py, keep pure state-machine logic (reactivate_order, extend_order) in base/services/orders.py, and move signal dispatch/periodic handlers into base/signals/order_listeners.py. Invoice side-effects should be triggered via order_paid/order_approved signals rather than inline calls.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "control_init_dual_role",
+      "summary": "control/views/__init__.py conflates base view utilities with a backward-compat re-export barrel for admin_views",
+      "related_files": ["app/eventyay/control/views/__init__.py"],
+      "evidence": [
+        "Lines 1-183 define EventBasedFormMixin, CreateView, UpdateView, ChartContainingView, PaginationMixin, LargeResultSetPage, LargeResultSetPaginator — genuinely reusable view primitives.",
+        "Lines 185-268 are a re-export block importing ~30 names from .admin_views with an explicit comment 'Import all views from admin_views.py to maintain backward compatibility'.",
+        "PaginationMixin's coupling signal is valid: it accesses self.request, self.paginate_by, and self.DEFAULT_PAGINATION — but these are all standard Django ListView attributes, making the coupling idiomatic, not problematic.",
+        "The dual role of the file (utility definitions + backward-compat barrel) is a mild coherence violation."
+      ],
+      "suggestion": "Move the backward-compat re-exports to a dedicated control/views/compat.py or accept the barrel as intentional and document it. The utility classes belong in control/views/base.py or similar.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "concern_verdict": "confirmed",
+      "concern_fingerprint": "a0476933ab4e8f61"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "navigation_repeated_structural_pattern",
+      "summary": "control/navigation.py builds navigation arrays via 600+ lines of repeated procedural appending instead of a declarative data-driven registry",
+      "related_files": ["app/eventyay/control/navigation.py"],
+      "evidence": [
+        "get_event_navigation (and sibling functions) build nav arrays by appending dicts of shape {label, url, active, icon} under permission checks.",
+        "Complexity score 305, LOC 633. flagged as indirection hotspot.",
+        "Every new nav entry requires adding 6-10 lines of boilerplate inside the function body rather than registering a nav entry definition.",
+        "The same reverse() call pattern with event/organizer slugs is repeated for every nav item."
+      ],
+      "suggestion": "Replace the procedural appending with a declarative list of NavEntry(label, url_name, url_kwargs_fn, permission, icon) objects. The builder function reduces to a comprehension filtering by permission and computing active state. New entries become one-line registrations.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "cart_keyfunc_implicit_tuple_shape",
+      "summary": "CartMixin.get_cart keyfunc returns tuples of different lengths for groupable vs ungroupable positions, making the groupby contract implicit",
+      "related_files": ["app/eventyay/presale/views/__init__.py"],
+      "evidence": [
+        "The keyfunc in get_cart (lines 127-185) returns (i, addon_penalty, pos.pk, 0, 0, ..., 0) (13 elements with padding) for downloadable/addon positions.",
+        "For groupable positions it returns (0, 0, 0) + category_key + product_key + variation_key + (price, voucher_id, subevent_id, seat_id) — also 13 elements but semantically different.",
+        "The two branches rely on the first element being 0 vs a position id to signal groupability — an implicit contract embedded in tuple position.",
+        "Line 194: group.has_questions = answers and k[0] != '' — but k[0] is an integer, so this check is always False for the non-string case. This is a latent logic confusion from the implicit tuple contract."
+      ],
+      "suggestion": "Replace the dual-shape tuple with a named key object (dataclass or NamedTuple) that has explicit is_grouped and sort_key fields. The groupby key comparison and has_questions check become explicit.",
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_exporters_mixin_coupling",
+      "summary": "ExportersMixin implicit host contract is intentional Django CBV mixin pattern",
+      "related_files": ["app/eventyay/api/views/exporters.py"],
+      "evidence": [
+        "ExportersMixin depends on self.exporters, self.do_export, self.get_serializer_kwargs, self.kwargs — all provided by EventExportersViewSet and OrganizerExportersViewSet.",
+        "This is the canonical Django mixin pattern: the mixin defines protocol; concrete subclasses supply implementation. The coupling is by design and correctly documented by the class hierarchy.",
+        "Both concrete subclasses are in the same file, making the contract immediately visible."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "2efe70fd618803a3",
+      "reasoning": "Django CBV mixin pattern: self.exporters, self.do_export, etc. are provided by concrete subclasses in the same file. The implicit contract is intentional and correctly structured."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_base_views_mixins_orphaned",
+      "summary": "base/views/mixins.py is not orphaned — used by presale checkout/order views through inheritance",
+      "related_files": ["app/eventyay/base/views/mixins.py"],
+      "evidence": [
+        "BaseQuestionsViewMixin and OrderQuestionsViewMixin are base classes for presale views that handle question forms.",
+        "Orphan detector misses inheritance-based consumption: presale views inherit from these mixins without explicit module-level imports that the detector can trace."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "6b3f44aafefd9b16",
+      "reasoning": "File is actively used via class inheritance in presale checkout views. The orphan detector only traces module-level import statements, not inheritance-based consumption."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_control_forms_widgets_orphaned",
+      "summary": "control/forms/widgets.py is not orphaned — imported by 8 files via relative import",
+      "related_files": ["app/eventyay/control/forms/widgets.py"],
+      "evidence": [
+        "Grep confirms: app/eventyay/plugins/sendmail/forms.py, app/eventyay/plugins/checkinlists/exporters.py, app/eventyay/control/forms/vouchers.py, app/eventyay/control/forms/product.py, app/eventyay/control/forms/orders.py, app/eventyay/control/forms/filter.py, app/eventyay/control/forms/checkin.py, app/eventyay/control/forms/event.py all import Select2/Select2Multiple from this file.",
+        "The orphan detector only matched absolute import paths."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "a9a048e143ee5e56",
+      "reasoning": "Actively used by 8 sibling form files via relative import. Orphan detector limited to absolute import path matching."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_sendmail_mixins_orphaned",
+      "summary": "plugins/sendmail/mixins.py is imported by plugins/sendmail/views.py",
+      "related_files": ["app/eventyay/plugins/sendmail/mixins.py"],
+      "evidence": [
+        "Direct grep confirms: app/eventyay/plugins/sendmail/views.py imports from .mixins.",
+        "CopyDraftMixin and QueryFilterOrderingMixin are well-designed single-purpose mixins."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "f7772a8ec688c803",
+      "reasoning": "Imported by plugins/sendmail/views.py. Not orphaned."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_presale_views_init_coupling",
+      "summary": "presale/views/__init__.py coupling and size signals are acceptable for its coherent cart-utility domain",
+      "related_files": ["app/eventyay/presale/views/__init__.py"],
+      "evidence": [
+        "File defines: cached_invoice_address, CartMixin, cart_exists, get_cart, get_cart_total, get_cart_invoice_address, get_cart_is_free, EventViewMixin, OrganizerViewMixin, allow_frame_if_namespaced, allow_cors_if_namespaced, iframe_entry_view_wrapper.",
+        "All these are cart/presale-session utilities — a single coherent domain. File is 449 lines, large but not mixed-concern.",
+        "The coupling is to cart_session from cart.py via deferred import — this is a deliberate circular-import avoidance pattern."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "2695e2e0d8f9ef6d",
+      "reasoning": "All contents are cart/presale-session utilities with a single coherent domain responsibility. Size alone is not a design coherence problem."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_presale_cart_coupling",
+      "summary": "presale/views/cart.py coupling signal is expected for a cart action handler file",
+      "related_files": ["app/eventyay/presale/views/cart.py"],
+      "evidence": [
+        "CartActionMixin and its concrete view classes handle cart add/remove/voucher actions — inherently stateful operations that need access to request, event, cart session.",
+        "File at 701 LOC contains CartActionMixin plus concrete Add, Remove, Voucher, Clear views — all in the same domain.",
+        "The bare except at line 57 (try: widget_data_cache = caches['redis'] except: widget_data_cache = caches['default']) is a minor smell but not a design coherence issue."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "971adbb4c68b41f8",
+      "reasoning": "Large file but single coherent domain (cart action handling). The coupling to self.request, self.kwargs, self.event is inherent to Django view classes."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_schedule_forms_orphaned",
+      "summary": "schedule/forms.py is imported by 3 files and is not orphaned",
+      "related_files": ["app/eventyay/schedule/forms.py"],
+      "evidence": [
+        "Grep confirms: person/forms/profile.py, orga/views/schedule.py, cfp/views/user.py import from eventyay.schedule.forms.",
+        "File contains AvailabilitiesFormMixin, RoomForm, QuickScheduleForm — well-factored form utilities."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "5fccfb6b86b70442",
+      "reasoning": "Actively imported by 3 files. Not orphaned."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_storage_views_upload_mixin",
+      "summary": "storage/views.py UploadMixin implicit host contract is the standard Django CBV mixin pattern",
+      "related_files": ["app/eventyay/storage/views.py"],
+      "evidence": [
+        "UploadMixin depends on self.kwargs, self.permissions — provided by UploadView and ScheduleImportView which inherit from it.",
+        "Both concrete views are in the same file, making the contract visible and intentional."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "6f5794161308a603",
+      "reasoning": "Standard Django CBV mixin pattern; concrete subclasses supply self.permissions in the same file."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_agenda_apps_orphaned",
+      "summary": "agenda/apps.py is a Django AppConfig loaded by Django's app registry, not via Python import",
+      "related_files": ["app/eventyay/agenda/apps.py"],
+      "evidence": [
+        "Django loads AppConfig subclasses via INSTALLED_APPS string references, not Python imports.",
+        "agenda/apps.py correctly wires app initialization (imports phrases, celery app) in its ready() method."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "673c3a1ceb5ce8c4",
+      "reasoning": "Django AppConfig loaded via INSTALLED_APPS string — not imported directly. Orphan detector correctly notes zero importers but this is expected for AppConfig files."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_agenda_permissions_orphaned",
+      "summary": "agenda/permissions.py defines rules predicates that are registered at decoration time, requiring no explicit importers",
+      "related_files": ["app/eventyay/agenda/permissions.py"],
+      "evidence": [
+        "Uses @rules.predicate decorator from the `rules` library, which registers predicates on decoration.",
+        "Module is imported by agenda app initialization, not by individual consumers."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "e7635d3ec5f24474",
+      "reasoning": "rules.predicate registry — modules are loaded for their side effects at app startup, not imported by individual callers."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_agenda_tasks_orphaned",
+      "summary": "agenda/tasks.py defines a Celery task registered by name, not imported directly by callers",
+      "related_files": ["app/eventyay/agenda/tasks.py"],
+      "evidence": [
+        "@app.task(name='pretalx.agenda.export_schedule_html') registers the task with Celery by string name.",
+        "Callers invoke it via apply_async with the task name string, not via Python import."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "8b89afd5044df14f",
+      "reasoning": "Celery task registered by name. Called via string name, not Python import. Orphan detection is a false positive for Celery tasks."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_agenda_urls_orphaned",
+      "summary": "agenda/urls.py is included into the main URL configuration, not Python-imported by userland code",
+      "related_files": ["app/eventyay/agenda/urls.py"],
+      "evidence": [
+        "Grep confirms: multidomain/maindomain_urlconf.py includes agenda.urls.",
+        "Django URL modules are included via path/include(), not imported directly."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "69e9840d8db103be",
+      "reasoning": "URL conf included via Django's include() mechanism from maindomain_urlconf.py."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_agenda_featured_dispatch_signature",
+      "summary": "FeaturedView.dispatch signature variation is a legitimate permission-check override, not a design problem",
+      "related_files": ["app/eventyay/agenda/views/featured.py"],
+      "evidence": [
+        "dispatch(self, request, *args, **kwargs) is the standard Django CBV dispatch signature.",
+        "The variation across 40 files is inherent to the Django dispatch pattern — each view may override dispatch for pre-processing.",
+        "FeaturedView.dispatch specifically redirects to schedule if the user can see the schedule but not the featured page — a coherent permission check."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "8d97f738319d56fe",
+      "reasoning": "Standard Django CBV dispatch override for permission-based redirect. Signature variation across views is expected."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_agenda_utils_orphaned",
+      "summary": "agenda/views/utils.py is used by sibling agenda views via relative import — not orphaned",
+      "related_files": ["app/eventyay/agenda/views/utils.py"],
+      "evidence": [
+        "Agenda view files import from agenda/views/utils.py via relative imports that the orphan detector cannot trace.",
+        "File contains ICS token validation (load_starred_ics_token, parse_ics_token), export utilities, ETag computation — used by schedule.py, talk.py views."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "2bc9b1d66c2e4cf4",
+      "reasoning": "Used by sibling agenda views via relative imports. Orphan detector limited to absolute import paths."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_apps_orphaned",
+      "summary": "api/apps.py is a Django AppConfig loaded by the app registry",
+      "related_files": ["app/eventyay/api/apps.py"],
+      "evidence": [
+        "api/apps.py defines EventyayApiConfig(AppConfig) loaded via INSTALLED_APPS.",
+        "Its ready() method imports signals and webhooks to register receivers — standard Django AppConfig pattern."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "0d82382ce7562c47",
+      "reasoning": "Django AppConfig. Loaded by Django, not imported by userland Python."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_auth_api_auth_orphaned",
+      "summary": "api/auth/api_auth.py is loaded by DRF authentication configuration, not Python-imported",
+      "related_files": ["app/eventyay/api/auth/api_auth.py"],
+      "evidence": [
+        "DRF authentication backends are referenced via string in settings, not via Python import.",
+        "File provides authentication classes consumed by the REST framework middleware pipeline."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "34fe37c01a515390",
+      "reasoning": "DRF authentication backend loaded via settings string. Orphan detector cannot trace settings-based references."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_auth_permission_orphaned",
+      "summary": "api/auth/permission.py is a DRF permission class loaded via DRF configuration, not explicit imports",
+      "related_files": ["app/eventyay/api/auth/permission.py"],
+      "evidence": [
+        "DRF permission classes are referenced in view DEFAULT_PERMISSION_CLASSES or per-view permission_classes tuples.",
+        "186 LOC of permission logic is coherent and focused on API permission checking."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "f5d642c564446baf",
+      "reasoning": "DRF permission class. Loaded by framework. Not a direct Python import target for callers."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_middleware_orphaned",
+      "summary": "api/middleware.py is Django middleware loaded via MIDDLEWARE setting, not Python-imported",
+      "related_files": ["app/eventyay/api/middleware.py"],
+      "evidence": [
+        "Django middleware classes are referenced as strings in settings.MIDDLEWARE.",
+        "118 LOC of API middleware (Authorization header processing) is coherent and single-purpose."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "816ec03d01ee5269",
+      "reasoning": "Django middleware loaded via settings string. Not directly imported."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_serializers_multiple_orphaned",
+      "summary": "Multiple api/serializers/ files flagged as orphaned are loaded by DRF viewsets via get_serializer_class, not direct imports",
+      "related_files": [
+        "app/eventyay/api/serializers/access_code.py",
+        "app/eventyay/api/serializers/fields.py",
+        "app/eventyay/api/serializers/legacy.py",
+        "app/eventyay/api/serializers/organizer.py",
+        "app/eventyay/api/serializers/product.py",
+        "app/eventyay/api/serializers/question.py",
+        "app/eventyay/api/serializers/rooms.py",
+        "app/eventyay/api/serializers/stream_schedule.py"
+      ],
+      "evidence": [
+        "DRF serializers are imported by their corresponding view files in api/views/. The orphan detector appears to have not traced these cross-directory imports.",
+        "The api/views/ directory profile shows avg_fan_out of 0.0 which suggests import tracking may be incomplete for this directory pair."
+      ],
+      "suggestion": null,
+      "confidence": "medium",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "37fc3ce7869380f8",
+      "reasoning": "DRF serializers are imported by corresponding api/views/ files. The orphan detector's tracking appears incomplete for this directory pair given avg_fan_out: 0.0 for api/serializers/."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_views_init_dict_keys",
+      "summary": "api/views/__init__.py dict_keys and signature signals are not design coherence issues",
+      "related_files": ["app/eventyay/api/views/__init__.py"],
+      "evidence": [
+        "The 'list' signature variation across 7 files is inherent to DRF ViewSet overriding — list is a DRF framework method with different signatures in different ViewSet subclasses.",
+        "dict_keys usage is a standard Python dict operation, not a design problem."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "db2917bdb30fb307",
+      "reasoning": "DRF list() override signature variation is expected. dict_keys is not a design coherence signal."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_views_product_structural",
+      "summary": "api/views/product.py at 620 LOC is large but has a single coherent domain (product API CRUD)",
+      "related_files": ["app/eventyay/api/views/product.py"],
+      "evidence": [
+        "File contains ViewSets for Product, ProductVariation, Question, QuestionOption, Quota, ProductCategory — all product-domain resources.",
+        "Each ViewSet class has focused responsibilities. The file is large because the product domain has many related resource types."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "ea32d8289f0ebd3c",
+      "reasoning": "Large but single coherent domain. Multiple resource ViewSets for the product domain in one file is acceptable."
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "dismiss_api_webhooks_silent_except",
+      "summary": "api/webhooks.py silent except is an error strategy question, not a design coherence issue",
+      "related_files": ["app/eventyay/api/webhooks.py"],
+      "evidence": [
+        "A single silent except in a webhook sender is likely intentional fault tolerance for external HTTP calls.",
+        "This is an error_consistency concern, not design coherence."
+      ],
+      "suggestion": null,
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "305512126f26ba19",
+      "reasoning": "Error handling strategy question, not a design coherence violation. Out of scope for this dimension."
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The codebase's largest files grew by accretion over time: services/orders.py, base/email.py, and logdisplay.py each accumulated adjacent responsibilities without a formal split trigger. The lack of a size/responsibility review gate allowed single files to absorb multiple concerns.",
+      "Django's flexible import model (settings-string middleware/auth, Celery task names, rules-predicate decoration) means many legitimate module files have zero Python importers, causing orphan detectors to fire false positives on valid Django infrastructure."
+    ],
+    "likely_symptoms": [
+      "dismiss_api_serializers_multiple_orphaned",
+      "dismiss_agenda_apps_orphaned",
+      "dismiss_agenda_permissions_orphaned",
+      "dismiss_agenda_tasks_orphaned",
+      "dismiss_agenda_urls_orphaned",
+      "dismiss_api_apps_orphaned",
+      "dismiss_api_auth_api_auth_orphaned",
+      "dismiss_api_auth_permission_orphaned",
+      "dismiss_api_middleware_orphaned"
+    ],
+    "possible_false_positives": [
+      "The orphan detector generates false positives for any Django AppConfig, Celery task, DRF authentication/permission backend, and URL conf — all of which are loaded by framework string references rather than Python imports. 170 orphan signals in this codebase are substantially over-counted.",
+      "The 'coupling' signal for CBV mixins (ExportersMixin, UploadMixin, PaginationMixin) is systematically a false positive — Django CBV mixins by design depend on attributes provided by concrete subclasses."
+    ]
+  }
+}

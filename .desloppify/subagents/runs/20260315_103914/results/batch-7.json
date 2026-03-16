@@ -1,0 +1,128 @@
+{
+  "batch": "dependency_health",
+  "batch_index": 7,
+  "assessments": {
+    "dependency_health": 52.0
+  },
+  "dimension_notes": {
+    "dependency_health": {
+      "evidence": [
+        "pyproject.toml declares 190+ production dependencies, including multiple overlapping libraries: bleach (HTML sanitization) and nh3 (HTML sanitization) both present — nh3 seen used in checkinlists/exporters.py; bleach may be redundant.",
+        "orjson and standard json are both present — orjson seen used in some serializers, json used in many views/services, but no consistent policy on which to prefer.",
+        "PyJWT (pyjwt) and jwcrypto both present — jwt used in eventyay_common/utils.py and base/models/event.py; jwcrypto likely used for WebAuthn but is heavy for that purpose.",
+        "pandas listed as a dependency (heavy ML/data library); usage appears limited to analytics graphs (features/analytics/graphs/utils.py) which could use lighter alternatives.",
+        "matplotlib listed as a dependency — also potentially only for analytics charts.",
+        "Both requests and aiohttp present — HTTP clients for sync vs async paths, which is expected in a mixed sync/ASGI app but worth monitoring.",
+        "vat-moss-forked pinned with note 'Hold back by eventyay-stripe' and comment 'This library prevents us from being compatible with Python v3.13+' — version conflict actively blocking Python upgrade.",
+        "pyproject.toml uses >= version specifiers for all dependencies (no upper bounds), making reproducible builds dependent entirely on the lock mechanism.",
+        "eventyay-paypal, eventyay-stripe, eventyay-bitpay, exhibition all pinned to @main branches of GitHub repos — unpinned upstream main branches introduce silent breakage risk.",
+        "pdf2image and pdfrw both present for PDF handling alongside reportlab — three PDF libraries for potentially overlapping use cases.",
+        "bleach and nh3 both present for HTML sanitization — nh3 is the newer Rust-based replacement for bleach; having both suggests incomplete migration."
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium"
+    }
+  },
+  "dimension_judgment": {
+    "dependency_health": {
+      "strengths": [
+        "Core framework dependencies (Django, DRF, Celery, Channels) are sensibly organized and on recent versions.",
+        "Dev dependencies are cleanly separated into [dependency-groups] dev section.",
+        "External payment plugins are isolated as separate packages, keeping payment logic out of the core dependency graph.",
+        "The comment about vat-moss-forked blocking Python 3.13 shows the team is aware of the constraint and has documented it."
+      ],
+      "issue_character": "The dominant issue is dependency surface bloat: multiple libraries serving the same purpose (bleach+nh3, orjson+json, pyjwt+jwcrypto, pdf2image+pdfrw+reportlab, requests+aiohttp) combined with heavy analytics dependencies (pandas, matplotlib) and four upstream-pinned-to-@main external plugins.",
+      "score_rationale": "The codebase carries substantial dependency health risk. The bleach/nh3 dual HTML sanitizer and the active version conflict blocking Python 3.13 are the most concrete defects. The four @main-pinned plugins create silent breakage risk on every pip install. The 190+ flat dependency list with no upper bounds makes auditing difficult. This is materially worse than a healthy project, which would have consolidated sanitizers, explicit commit hashes for git-sourced deps, and a single JSON serializer policy, warranting a score in the low-50s range."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "dependency_health",
+      "identifier": "dual_html_sanitizer",
+      "summary": "bleach and nh3 both declared as dependencies for HTML sanitization — incomplete migration",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "\"bleach>=6.3.0\" and \"nh3>=0.3.2\" both appear in dependencies",
+        "nh3 is used in app/eventyay/plugins/checkinlists/exporters.py",
+        "bleach is the legacy library nh3 is designed to replace"
+      ],
+      "suggestion": "Audit all bleach usages, migrate to nh3, and remove bleach from pyproject.toml.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "unpinned_git_deps",
+      "summary": "Four external plugins pinned to @main Git branches with no commit hash, creating silent breakage risk",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "\"eventyay-paypal @ git+https://github.com/fossasia/eventyay-paypal.git@main\"",
+        "\"eventyay-stripe @ git+https://github.com/fossasia/eventyay-stripe.git@main\"",
+        "\"eventyay-bitpay @ git+https://github.com/fossasia/eventyay-bitpay.git@main\"",
+        "\"exhibition @ git+https://github.com/fossasia/eventyay-exhibition.git@main\""
+      ],
+      "suggestion": "Pin each git dependency to a specific commit SHA (e.g., @abc1234) or create tagged releases and use version ranges. This ensures reproducible installs and prevents upstream main-branch changes from breaking builds.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "python_version_blocker",
+      "summary": "vat-moss-forked dependency blocks Python 3.13+ compatibility, documented but unresolved",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "requires-python = \">=3.12, <3.13\"",
+        "Comment: \"# This library prevents us from being compatible with Python v3.13+.\"",
+        "\"vat-moss-forked>=2020.3.20.0.11.0\""
+      ],
+      "suggestion": "Evaluate whether vat-moss-forked can be replaced with pyvat (already in deps) or vat_moss directly, or vendor the specific EU VAT validation functions used to eliminate the blocker.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "heavy_analytics_deps",
+      "summary": "pandas and matplotlib pulled in for analytics charts — heavy data-science libraries for a web app",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "\"pandas>=2.3.3\" and \"matplotlib>=3.10.8\" in production dependencies",
+        "Seed files reference app/eventyay/features/analytics/graphs/utils.py suggesting chart generation is the primary use"
+      ],
+      "suggestion": "Audit actual pandas/matplotlib usage in analytics; if only simple chart generation is needed, consider lighter alternatives (e.g., Pillow + manual drawing, or chart.js on the frontend) to reduce install size and startup overhead.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dual_pdf_libs",
+      "summary": "Three PDF-related libraries present (pdf2image, pdfrw, reportlab) with overlapping capabilities",
+      "related_files": ["app/pyproject.toml"],
+      "evidence": [
+        "\"pdf2image>=1.17.0\", \"pdfrw>=0.4\", \"reportlab>=4.4.9\" all in dependencies",
+        "reportlab used in plugins/checkinlists/exporters.py for PDF generation"
+      ],
+      "suggestion": "Audit which PDF operations each library handles; consolidate where possible (reportlab already handles PDF generation; pdf2image adds rasterization, pdfrw adds manipulation — confirm each is truly needed).",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Merger of two codebases (pretix + pretalx) brought together two sets of dependencies that were not consolidated",
+      "Incremental addition of analytics features added heavy data-science libraries without evaluating lighter alternatives",
+      "Using @main git pins for payment plugins suggests the plugins are developed in tandem and released informally"
+    ],
+    "likely_symptoms": [
+      "dual_html_sanitizer — symptom of in-progress migration from bleach to nh3 that was not completed"
+    ],
+    "possible_false_positives": [
+      "requests + aiohttp dual HTTP clients — justified by mixed sync/async (Django + Channels/Celery) architecture"
+    ]
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "batch": "type_safety",
+  "batch_index": 20,
+  "assessments": {
+    "type_safety": 52.0
+  },
+  "dimension_notes": {
+    "type_safety": {
+      "evidence": [
+        "get_blocked_users in base/services/user.py:426 is annotated '-> bool' but returns a list comprehension of serialized user objects",
+        "mail() in base/services/mail.py:74 declares 'context: dict[str, Any] = None' — the default violates the declared type; the function body then guards with 'if isinstance(context, dict)' confirming None is a legitimate runtime value",
+        "User.get_short_name() -> str and User.get_full_name() -> str in base/models/auth.py:349,363 return self.email as the final fallback, but email is declared nullable (null=True, blank=True) — if both fullname and email are None the return value is None, not str",
+        "User.guid and User.gravatar_parameter (auth.py:841,845) call self.email.strip() unconditionally, but email is nullable; no guard exists in those properties",
+        "Order.meta_info_data (orders.py:301-307) returns '{}' when meta_info is falsy, but returns None on TypeError — two inconsistent sentinel values for the same missing-data case",
+        "AbstractPosition.meta_info_data (orders.py:1342-1346) is the correct version: always returns '{}', never None — demonstrating the inconsistency is not intentional design",
+        "Broad swaths of the public API surface — schedule/utils.py, presale/utils.py, agenda/views/utils.py, event/utils.py, cfp/flow.py public methods — have no return type annotations at all",
+        "SubmissionStates and Order.STATUS_* constants exist but comparison patterns in templates use raw strings; in Python code the constants are used correctly",
+        "WalletType enum is defined in base/payment.py but WalletQueries.WALLETS immediately dereferences .value to produce raw strings — any switch to the enum in downstream code would need the enum values reconstructed from the raw strings"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "sub_axes": {
+        "abstraction_leverage": 55.0,
+        "indirection_cost": 65.0,
+        "interface_honesty": 45.0,
+        "delegation_density": 60.0,
+        "definition_directness": 55.0,
+        "type_discipline": 48.0
+      }
+    }
+  },
+  "dimension_judgment": {
+    "type_safety": {
+      "strengths": [
+        "Order.STATUS_*, OrderPayment.PAYMENT_STATE_*, and OrderRefund.REFUND_STATE_* constants are consistently used in Python code rather than raw string literals, making those comparisons safe to grep and refactor",
+        "Union[bool, str] is used correctly for Order._can_be_paid and _is_still_available to express the error-code-or-success pattern explicitly",
+        "SubmissionStates class is used throughout Python schedule and review logic via the enum-like Choices class rather than raw strings",
+        "Some service-layer functions (e.g. remove_notifications, block_user, delete_user) have accurate return type annotations with correct bool semantics",
+        "Optional[SubEvent] in eventyay_common/utils.py:69 is correctly annotated and the function honors it"
+      ],
+      "issue_character": "The issues are neither isolated one-off mistakes nor a systemic complete absence of typing — rather they cluster around a specific pattern: annotations were added to some functions as documentation intent but were never verified against the actual code paths, producing a tier of actively misleading annotations (-> bool returning a list, -> str that can return None, dict[str, Any] with None default) alongside a large base of entirely unannotated public API functions.",
+      "score_rationale": "The codebase sits in the 50-60 range on the type_safety scale. There are genuine pockets of correct, useful annotations, and the model-layer constants prevent raw-string enum bypass in Python. However, multiple annotated functions actively lie about their return types (get_blocked_users -> bool returns a list, get_short_name/get_full_name -> str can return None), and a dominant fraction of the public utility surface carries no annotations at all. The inconsistency means a developer cannot trust annotations they see: some are accurate, some are actively wrong, and many are absent — precisely the '60: significant drag' scenario where verification must happen per-function rather than trusting the declared type."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "type_safety",
+      "identifier": "get_blocked_users_wrong_return_type",
+      "summary": "get_blocked_users annotated '-> bool' but returns a list of serialized user dicts",
+      "related_files": ["app/eventyay/base/services/user.py"],
+      "evidence": [
+        "Line 426: 'def get_blocked_users(user, event) -> bool:'",
+        "Lines 427-430: returns '[u.serialize_public(...) for u in user.blocked_users.all()]' — a list, not bool"
+      ],
+      "suggestion": "Change the return annotation to '-> list[dict]' (or a more specific TypedDict if one exists for serialized user objects). Also add 'user: User, event: Event' parameter annotations to match the pattern of the sibling functions.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "annotation_not_verified"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "mail_context_nullable_default",
+      "summary": "mail() declares 'context: dict[str, Any] = None' — None is a valid runtime value but violates the declared type",
+      "related_files": ["app/eventyay/base/services/mail.py"],
+      "evidence": [
+        "Line 74: 'context: dict[str, Any] = None'",
+        "Lines 146, 150: body guards with 'if isinstance(context, dict)' confirming None is intentionally accepted",
+        "Line 162: 'subject.format_map(TolerantDict(context))' — if context is None this raises TypeError, so the guard matters"
+      ],
+      "suggestion": "Change the annotation to 'context: dict[str, Any] | None = None' (or 'Optional[dict[str, Any]] = None'). This makes the accepted None value explicit in the type and removes the contradiction between the declared type and the guarded body.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "annotation_not_verified"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "user_get_name_nullable_email_return",
+      "summary": "User.get_short_name() and get_full_name() annotated '-> str' but can return None when email is null",
+      "related_files": ["app/eventyay/base/models/auth.py"],
+      "evidence": [
+        "Line 177: 'email = models.EmailField(... null=True, blank=True ...)'",
+        "Lines 349-361: get_short_name() returns self.email as the final branch — None when email is NULL",
+        "Lines 363-376: get_full_name() returns self.email as the final branch — None when email is NULL",
+        "Both methods are annotated '-> str' with no Optional"
+      ],
+      "suggestion": "Either (a) change annotations to '-> str | None' and update callers to handle None, or (b) add a final fallback 'return self.email or \"\"' to guarantee a str is always returned. Option (b) is safer given how widely Django auth machinery relies on get_short_name/get_full_name returning str.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "annotation_not_verified"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "user_guid_gravatar_nullable_email_crash",
+      "summary": "User.guid and User.gravatar_parameter call self.email.strip() without guarding against nullable email",
+      "related_files": ["app/eventyay/base/models/auth.py"],
+      "evidence": [
+        "Line 841: 'return str(uuid.uuid5(uuid.NAMESPACE_URL, f\"acct:{self.email.strip()}\")'  — AttributeError if email is None",
+        "Line 845: 'return md5(self.email.strip().encode()).hexdigest()' — AttributeError if email is None",
+        "Line 178: email field declared null=True"
+      ],
+      "suggestion": "Add a guard in both properties: 'if not self.email: return \"\"' (for gravatar_parameter, return a known anonymous hash like the md5 of an empty string). For guid, either raise ValueError when email is absent or use a fallback like the user pk.",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "annotation_not_verified"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "order_meta_info_data_inconsistent_sentinels",
+      "summary": "Order.meta_info_data returns either '{}' (falsy) or None on TypeError — two different sentinels for missing data",
+      "related_files": ["app/eventyay/base/models/orders.py"],
+      "evidence": [
+        "Lines 300-307: 'if not self.meta_info: return {}; try: return json.loads(self.meta_info); except TypeError: return None'",
+        "AbstractPosition.meta_info_data (lines 1342-1346) always returns '{}' on missing/falsy meta_info — the sibling implementation is correct",
+        "Callers that iterate or .get() the result will get AttributeError if they receive None from the Order version"
+      ],
+      "suggestion": "Remove the 'except TypeError: return None' branch and replace with 'except (TypeError, json.JSONDecodeError): return {}' to match the AbstractPosition behavior. The Order version should never return None.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "inconsistent_sentinel"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "public_api_unannotated_surface",
+      "summary": "Large public utility surface across multiple modules carries no return type annotations",
+      "related_files": [
+        "app/eventyay/schedule/utils.py",
+        "app/eventyay/agenda/views/utils.py",
+        "app/eventyay/eventyay_common/utils.py",
+        "app/eventyay/event/utils.py",
+        "app/eventyay/api/utils.py",
+        "app/eventyay/cfp/flow.py"
+      ],
+      "evidence": [
+        "schedule/utils.py:1 — guess_schedule_version: no annotations on params or return",
+        "agenda/views/utils.py — redirect_to_presale_with_warning, is_public_schedule_empty, is_public_speakers_empty, get_schedule_exporters, find_schedule_exporter, encode_email: all unannotated",
+        "event/utils.py:4 — create_organizer_with_team: no annotations",
+        "api/utils.py:4 — get_protocol: no annotations",
+        "cfp/flow.py — BaseCfPStep.is_applicable, is_completed, get, post, done, get_csp_update: all missing return annotations despite being the public interface of the CfP flow abstraction"
+      ],
+      "suggestion": "Add return annotations to the public helper functions in each utils module and to BaseCfPStep's public interface methods (is_applicable -> bool, is_completed -> bool, get -> HttpResponse, post -> HttpResponse, done -> None, get_csp_update -> dict | None). Prioritize functions that have callers in multiple modules.",
+      "confidence": "medium",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "missing_annotations"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Annotations were added opportunistically and never validated — some are correct, some are actively wrong, creating a codebase where annotation presence is not a trustworthy signal",
+      "The nullable email field on User was not propagated through the type annotations of methods that dereference it, suggesting the nullable addition came after the annotations were written",
+      "Two separate implementations of meta_info_data (Order vs AbstractPosition) diverged without review, the Order version being the incorrect one"
+    ],
+    "likely_symptoms": [
+      "public_api_unannotated_surface is broad and symptom-level — the root issue is no annotation coverage discipline"
+    ],
+    "possible_false_positives": []
+  }
+}

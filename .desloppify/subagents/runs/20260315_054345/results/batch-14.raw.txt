@@ -1,0 +1,112 @@
+{
+  "batch": "initialization_coupling",
+  "batch_index": 14,
+  "assessments": {
+    "initialization_coupling": 65.0
+  },
+  "dimension_notes": {
+    "initialization_coupling": {
+      "evidence": [
+        "app/eventyay/base/models/event.py line 84: `TALK_HOSTNAME = settings.TALK_HOSTNAME` at module scope — snapshot of a settings value at import time. If TALK_HOSTNAME changes (e.g., in tests using override_settings), all code referencing this module-level constant uses the stale value.",
+        "app/eventyay/eventyay_common/views/account/basic.py line 41: `VALID_LANGUAGE_CODES = {code for code, __ in settings.LANGUAGES}` at module scope — computed set from settings at import time; tests using override_settings on LANGUAGES would see the stale set.",
+        "app/eventyay/common/language.py lines 9-13: `LANGUAGE_CODES_MAPPING` and `LANGUAGE_NAMES` computed from settings at module scope — same stale-snapshot risk.",
+        "app/eventyay/agenda/management/commands/export_schedule_html.py line 19: `SERVER_NAME = settings.SITE_URL.split('://')[1]` at module scope — fragile if SITE_URL is not set at import time.",
+        "app/eventyay/base/signals.py: module-level `app_cache = {}` mutable global populated lazily via `_populate_app_cache()` using `apps.check_apps_ready()`. Thread safety relies on lru_cache on `resolve_app_for_module` but `app_cache` itself is populated without a lock.",
+        "app/eventyay/base/apps.py lines 29-32: `default_app_config = 'eventyay.base.EventyayBaseConfig'` followed by `import eventyay.celery_app as celery` at module scope — import-time side effect that connects to Celery on base package import.",
+        "app/eventyay/core/utils/statsd.py: `_state = threading.local()` module-level thread-local — appropriate pattern; StatsD client is lazily created per-thread on first use inside an async context manager, not at import time.",
+        "app/eventyay/base/apps.py ready() imports exporter, payment, exporters, invoice, notifications, email to trigger signal registration — standard Django AppConfig.ready() pattern, not an initialization coupling problem."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium"
+    }
+  },
+  "dimension_judgment": {
+    "initialization_coupling": {
+      "strengths": [
+        "AppConfig.ready() is used correctly for signal registration; side effects are gated behind the Django app-ready lifecycle.",
+        "Redis connections in core/utils/redis.py use context managers with lazy creation — no connection at import time.",
+        "StatsD client in core/utils/statsd.py uses thread-local lazy initialization, not a module-level singleton.",
+        "No DB connections or network calls observed at module scope."
+      ],
+      "issue_character": "The dominant pattern is module-level constants computed by reading from Django settings at import time, creating stale-snapshot risks for test isolation; one additional concern is an import-time Celery app connection in base/__init__.py.",
+      "score_rationale": "The score sits between 50 (mediocre) and 70 (adequate): the codebase correctly avoids the worst initialization coupling patterns (no DB at import time, proper AppConfig.ready() usage, lazy Redis), but four distinct files snapshot settings values as module-level constants, and base/__init__.py triggers a Celery import as a side effect of the base package being loaded. These are real test-isolation hazards rather than theoretical risks."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-01",
+      "summary": "TALK_HOSTNAME snapshotted at module scope in base/models/event.py — stale under override_settings in tests",
+      "related_files": ["app/eventyay/base/models/event.py"],
+      "evidence": [
+        "Line 84: `TALK_HOSTNAME = settings.TALK_HOSTNAME` at module scope, before any class definitions.",
+        "Any test using `override_settings(TALK_HOSTNAME=...)` or running in a different environment configuration will see the import-time value."
+      ],
+      "suggestion": "Remove the module-level constant; replace usages inside the module with direct `settings.TALK_HOSTNAME` references, or add a module-level getter `def get_talk_hostname(): return settings.TALK_HOSTNAME` and update callers to call the getter.",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "import_time_settings_snapshot"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-02",
+      "summary": "VALID_LANGUAGE_CODES and LANGUAGE_CODES_MAPPING computed from settings at import time in two separate files",
+      "related_files": [
+        "app/eventyay/eventyay_common/views/account/basic.py",
+        "app/eventyay/common/language.py"
+      ],
+      "evidence": [
+        "basic.py line 41: `VALID_LANGUAGE_CODES = {code for code, __ in settings.LANGUAGES}` at module scope.",
+        "common/language.py lines 9-10: `LANGUAGE_CODES_MAPPING = {...}` and `LANGUAGE_NAMES = dict(global_settings.LANGUAGES)` at module scope."
+      ],
+      "suggestion": "Convert VALID_LANGUAGE_CODES to a function or @functools.lru_cache-decorated function. For LANGUAGE_CODES_MAPPING and LANGUAGE_NAMES, similarly wrap in cached functions. This preserves the performance benefit while allowing override_settings to invalidate the cache in tests (by clearing lru_cache in test setUp/tearDown).",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "import_time_settings_snapshot"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-03",
+      "summary": "base/__init__.py imports eventyay.celery_app at module scope, triggering Celery broker connection on base package load",
+      "related_files": ["app/eventyay/base/__init__.py"],
+      "evidence": [
+        "Lines 29-32: `try: import eventyay.celery_app as celery  # NOQA\nexcept ImportError: pass` at module scope — Celery app is initialized as a side effect of importing the base package.",
+        "This means any test or script that imports anything from eventyay.base will trigger Celery's broker configuration."
+      ],
+      "suggestion": "Remove the module-scope import from base/__init__.py. The AppConfig.ready() method already handles the celery import inside the try/except. The bare module-scope import is redundant and introduces an import-time side effect.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "import_time_side_effect"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-04",
+      "summary": "signals.py app_cache mutable global is populated without a lock, creating a thread-safety gap",
+      "related_files": ["app/eventyay/base/signals.py"],
+      "evidence": [
+        "Line 14: `app_cache = {}` mutable module-level dict.",
+        "Lines 17-21: `_populate_app_cache()` assigns to the global `app_cache` without any lock.",
+        "Lines 35-36: `resolve_app_for_module()` checks `if not app_cache:` and calls `_populate_app_cache()` — this check-then-set is not atomic under concurrent access."
+      ],
+      "suggestion": "Add a module-level threading.Lock and guard the populate-if-empty pattern: `if not app_cache: with _app_cache_lock: if not app_cache: _populate_app_cache()`. Alternatively, populate `app_cache` inside AppConfig.ready() which is guaranteed to run before any signal dispatch.",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "single_edit",
+      "root_cause_cluster": "global_mutable_state"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Settings values were snapshoted as module constants as a performance optimization, without accounting for test-override scenarios.",
+      "The base/__init__.py Celery import is likely a historical artifact from before AppConfig.ready() was available."
+    ],
+    "likely_symptoms": ["IC-01", "IC-02", "IC-03", "IC-04"],
+    "possible_false_positives": [
+      "SERVER_NAME in export_schedule_html.py is in a management command module that is only loaded when the command runs, not on normal server startup — lower impact than model imports."
+    ]
+  }
+}

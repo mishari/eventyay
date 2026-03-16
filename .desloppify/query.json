@@ -1,0 +1,1451 @@
+{
+  "command": "next",
+  "items": [
+    {
+      "id": "review::.::holistic::error_consistency::err-001",
+      "confidence": "high",
+      "detector": "review",
+      "file": ".",
+      "summary": "FileCleanupMixin._delete_files() uses suppress(Exception), silently swallowing file deletion errors with no logging",
+      "detail": {
+        "holistic": true,
+        "dimension": "error_consistency",
+        "related_files": [
+          "app/eventyay/base/models/mixins.py"
+        ],
+        "evidence": [
+          "Line 184: `with suppress(Exception):` around `value.delete(save=False)` \u2014 any OS, storage backend, or network error during file deletion is silently ignored",
+          "No logger.warning() or logger.error() call before or inside the suppress block"
+        ],
+        "suggestion": "Replace suppress(Exception) with a specific catch for (OSError, FileNotFoundError, SuspiciousFileOperation) and add logger.warning() so deletion failures are at least observable in logs",
+        "reasoning": "",
+        "summary_hash": "ec2bf42a"
+      },
+      "status": "open",
+      "kind": "issue",
+      "primary_command": "desloppify plan resolve \"review::.::holistic::error_consistency::err-001\" --note \"<what you did>\" --confirm",
+      "queue_position": 54,
+      "plan_cluster": {
+        "name": "error-handling-standardization",
+        "description": "Replace bare Exception raises and silent swallows in production code: 30+ bare Exception() calls in domain services, FileCleanupMixin.save swallowing all exceptions, replay attack detection using bare Exception, user-facing validation raising bare Exception, GeoCodeView collapsing error types",
+        "total_items": 9,
+        "action_steps": [
+          {
+            "title": "Replace bare Exception() raises in security and validation code with domain exceptions",
+            "detail": "In app/eventyay/eventyay_common/views/auth.py lines 485 and 498: 'raise Exception(Possible replay attack...)'. A RepeatedResetDenied class already exists at line 310 in the same file but is unrelated. Create class ReplayAttackDetected(Exception) at the top of app/eventyay/eventyay_common/views/auth.py (or in a new app/eventyay/eventyay_common/exceptions.py). Replace both bare Exception raises with 'raise ReplayAttackDetected(...)'. In app/eventyay/control/views/user.py lines 81 and 94: same replay attack pattern \u2014 replace with 'raise ReplayAttackDetected(...)' importing from eventyay_common.exceptions. In app/eventyay/orga/forms/cfp.py lines 316 and 318: 'raise Exception(_(\"JSON file does not contain a list.\"))' \u2014 replace with 'raise forms.ValidationError(_(\"JSON file does not contain a list.\"))'. In app/eventyay/orga/forms/submission.py line 214: 'raise Exception(\"Cannot anonymise unsaved submission.\")' \u2014 replace with 'raise ValueError(\"Cannot anonymise unsaved submission.\")' since this is a programming error not a form error. In app/eventyay/base/models/organizer.py lines 48 and 73: check_access_permissions raises bare Exception with translated strings \u2014 replace with a new PermissionDenied (django.core.exceptions.PermissionDenied) or custom OrganizerAccessDenied(PermissionDenied) class.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_security_bare_exception",
+              "review::.::holistic::error_consistency::err_user_validation_bare_exception",
+              "review::.::holistic::error_consistency::err-002"
+            ]
+          },
+          {
+            "title": "Fix FileCleanupMixin silent swallow and GeoCodeView mixed error response",
+            "detail": "In app/eventyay/base/models/mixins.py line 184: FileCleanupMixin._delete_files() uses 'with suppress(Exception)' around value.delete(save=False). Replace with explicit 'try: value.delete(save=False) except OSError as e: logger.warning(\"Failed to delete file %s: %s\", value.name, e)'. Import logging at top of mixins.py if not already present (it is not). In app/eventyay/control/views/geo.py line 29: returns {'success': False, 'results': []} when neither opencagedata_apikey nor mapquest_apikey is set; line 32 returns the same structure for IOError. Differentiate: change line 29 return to JsonResponse({'success': False, 'error': 'no_api_key', 'results': []}) and line 32 return to JsonResponse({'success': False, 'error': 'network_error', 'results': []}). In app/eventyay/base/services/announcement.py: the @database_sync_to_async functions at lines 8, 15, 20, 32 do not handle DoesNotExist \u2014 wrap each in try/except Model.DoesNotExist and return None or re-raise as a named exception the consumer handles.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_file_cleanup_silent_swallow",
+              "review::.::holistic::error_consistency::err_geo_silent_mixed_failure",
+              "review::.::holistic::error_consistency::err-001",
+              "review::.::holistic::error_consistency::err-004"
+            ]
+          },
+          {
+            "title": "Audit and replace 30+ bare Exception() calls in production domain code",
+            "detail": "In app/eventyay/base/models/mixins.py line 98: LogMixin.log_action calls LogEntry.objects.create() with no exception handling. If the DB write fails (connection lost, constraint violation), the exception propagates silently upward through business logic. Wrap lines 98-115 in 'try: ... except Exception: logger.exception(\"Failed to persist log entry for action %s\", action); return None'. Similarly in app/eventyay/base/models/base.py line 93-118 (LoggingMixin version), wrap the logentry.save() at line 113 in try/except. Additional bare Exception raises in base/models: confirm with grep -rn 'raise Exception(' app/eventyay/base/models/ -- targets include app/eventyay/base/models/mail.py line 406, app/eventyay/base/models/invoices.py line 246. Create app/eventyay/base/exceptions.py with domain exceptions: InvoiceDeleteError, MailTemplateError, ScheduleConflictError. Replace each raise Exception(...) with the typed variant.",
+            "effort": "medium",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err-005",
+              "review::.::holistic::error_consistency::err_bare_exception_domain_violations"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "review::.::holistic::error_consistency::err-002",
+      "confidence": "high",
+      "detector": "review",
+      "file": ".",
+      "summary": "check_access_permissions() in organizer.py raises generic Exception with a translated string, violating agents.md error handling rule",
+      "detail": {
+        "holistic": true,
+        "dimension": "error_consistency",
+        "related_files": [
+          "app/eventyay/base/models/organizer.py"
+        ],
+        "evidence": [
+          "Line 48: `raise Exception(_(\"There must be at least one team...\"))` \u2014 with a TODO comment acknowledging this should use a concrete exception type",
+          "agents.md rule 3: 'preserve specific exception types; do not replace with generic Exception'"
+        ],
+        "suggestion": "Define a PermissionConfigurationError or reuse Django's ValidationError / PermissionDenied and raise that instead of bare Exception",
+        "reasoning": "",
+        "summary_hash": "a73aabe7"
+      },
+      "status": "open",
+      "kind": "issue",
+      "primary_command": "desloppify plan resolve \"review::.::holistic::error_consistency::err-002\" --note \"<what you did>\" --confirm",
+      "queue_position": 55,
+      "plan_cluster": {
+        "name": "error-handling-standardization",
+        "description": "Replace bare Exception raises and silent swallows in production code: 30+ bare Exception() calls in domain services, FileCleanupMixin.save swallowing all exceptions, replay attack detection using bare Exception, user-facing validation raising bare Exception, GeoCodeView collapsing error types",
+        "total_items": 9,
+        "action_steps": [
+          {
+            "title": "Replace bare Exception() raises in security and validation code with domain exceptions",
+            "detail": "In app/eventyay/eventyay_common/views/auth.py lines 485 and 498: 'raise Exception(Possible replay attack...)'. A RepeatedResetDenied class already exists at line 310 in the same file but is unrelated. Create class ReplayAttackDetected(Exception) at the top of app/eventyay/eventyay_common/views/auth.py (or in a new app/eventyay/eventyay_common/exceptions.py). Replace both bare Exception raises with 'raise ReplayAttackDetected(...)'. In app/eventyay/control/views/user.py lines 81 and 94: same replay attack pattern \u2014 replace with 'raise ReplayAttackDetected(...)' importing from eventyay_common.exceptions. In app/eventyay/orga/forms/cfp.py lines 316 and 318: 'raise Exception(_(\"JSON file does not contain a list.\"))' \u2014 replace with 'raise forms.ValidationError(_(\"JSON file does not contain a list.\"))'. In app/eventyay/orga/forms/submission.py line 214: 'raise Exception(\"Cannot anonymise unsaved submission.\")' \u2014 replace with 'raise ValueError(\"Cannot anonymise unsaved submission.\")' since this is a programming error not a form error. In app/eventyay/base/models/organizer.py lines 48 and 73: check_access_permissions raises bare Exception with translated strings \u2014 replace with a new PermissionDenied (django.core.exceptions.PermissionDenied) or custom OrganizerAccessDenied(PermissionDenied) class.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_security_bare_exception",
+              "review::.::holistic::error_consistency::err_user_validation_bare_exception",
+              "review::.::holistic::error_consistency::err-002"
+            ]
+          },
+          {
+            "title": "Fix FileCleanupMixin silent swallow and GeoCodeView mixed error response",
+            "detail": "In app/eventyay/base/models/mixins.py line 184: FileCleanupMixin._delete_files() uses 'with suppress(Exception)' around value.delete(save=False). Replace with explicit 'try: value.delete(save=False) except OSError as e: logger.warning(\"Failed to delete file %s: %s\", value.name, e)'. Import logging at top of mixins.py if not already present (it is not). In app/eventyay/control/views/geo.py line 29: returns {'success': False, 'results': []} when neither opencagedata_apikey nor mapquest_apikey is set; line 32 returns the same structure for IOError. Differentiate: change line 29 return to JsonResponse({'success': False, 'error': 'no_api_key', 'results': []}) and line 32 return to JsonResponse({'success': False, 'error': 'network_error', 'results': []}). In app/eventyay/base/services/announcement.py: the @database_sync_to_async functions at lines 8, 15, 20, 32 do not handle DoesNotExist \u2014 wrap each in try/except Model.DoesNotExist and return None or re-raise as a named exception the consumer handles.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_file_cleanup_silent_swallow",
+              "review::.::holistic::error_consistency::err_geo_silent_mixed_failure",
+              "review::.::holistic::error_consistency::err-001",
+              "review::.::holistic::error_consistency::err-004"
+            ]
+          },
+          {
+            "title": "Audit and replace 30+ bare Exception() calls in production domain code",
+            "detail": "In app/eventyay/base/models/mixins.py line 98: LogMixin.log_action calls LogEntry.objects.create() with no exception handling. If the DB write fails (connection lost, constraint violation), the exception propagates silently upward through business logic. Wrap lines 98-115 in 'try: ... except Exception: logger.exception(\"Failed to persist log entry for action %s\", action); return None'. Similarly in app/eventyay/base/models/base.py line 93-118 (LoggingMixin version), wrap the logentry.save() at line 113 in try/except. Additional bare Exception raises in base/models: confirm with grep -rn 'raise Exception(' app/eventyay/base/models/ -- targets include app/eventyay/base/models/mail.py line 406, app/eventyay/base/models/invoices.py line 246. Create app/eventyay/base/exceptions.py with domain exceptions: InvoiceDeleteError, MailTemplateError, ScheduleConflictError. Replace each raise Exception(...) with the typed variant.",
+            "effort": "medium",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err-005",
+              "review::.::holistic::error_consistency::err_bare_exception_domain_violations"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "review::.::holistic::error_consistency::err-004",
+      "confidence": "high",
+      "detector": "review",
+      "file": ".",
+      "summary": "base/services/announcement.py @database_sync_to_async functions expose DoesNotExist to Channels consumers without handling",
+      "detail": {
+        "holistic": true,
+        "dimension": "error_consistency",
+        "related_files": [
+          "app/eventyay/base/services/announcement.py"
+        ],
+        "evidence": [
+          "get_announcement(pk, event): `Announcement.objects.get(pk=pk, event=event)` \u2014 raises DoesNotExist if pk is invalid, which propagates as an unhandled exception to the Channels WebSocket consumer",
+          "update_announcement(): same pattern \u2014 `Announcement.objects.get(pk=kwargs.pop('id'), event=kwargs.pop('event'))` with no DoesNotExist handling"
+        ],
+        "suggestion": "Wrap get() calls with try/except Announcement.DoesNotExist and raise a domain-appropriate exception (e.g., ValueError or a custom ChannelError) that the consumer can handle cleanly",
+        "reasoning": "",
+        "summary_hash": "fc61980d"
+      },
+      "status": "open",
+      "kind": "issue",
+      "primary_command": "desloppify plan resolve \"review::.::holistic::error_consistency::err-004\" --note \"<what you did>\" --confirm",
+      "queue_position": 56,
+      "plan_cluster": {
+        "name": "error-handling-standardization",
+        "description": "Replace bare Exception raises and silent swallows in production code: 30+ bare Exception() calls in domain services, FileCleanupMixin.save swallowing all exceptions, replay attack detection using bare Exception, user-facing validation raising bare Exception, GeoCodeView collapsing error types",
+        "total_items": 9,
+        "action_steps": [
+          {
+            "title": "Replace bare Exception() raises in security and validation code with domain exceptions",
+            "detail": "In app/eventyay/eventyay_common/views/auth.py lines 485 and 498: 'raise Exception(Possible replay attack...)'. A RepeatedResetDenied class already exists at line 310 in the same file but is unrelated. Create class ReplayAttackDetected(Exception) at the top of app/eventyay/eventyay_common/views/auth.py (or in a new app/eventyay/eventyay_common/exceptions.py). Replace both bare Exception raises with 'raise ReplayAttackDetected(...)'. In app/eventyay/control/views/user.py lines 81 and 94: same replay attack pattern \u2014 replace with 'raise ReplayAttackDetected(...)' importing from eventyay_common.exceptions. In app/eventyay/orga/forms/cfp.py lines 316 and 318: 'raise Exception(_(\"JSON file does not contain a list.\"))' \u2014 replace with 'raise forms.ValidationError(_(\"JSON file does not contain a list.\"))'. In app/eventyay/orga/forms/submission.py line 214: 'raise Exception(\"Cannot anonymise unsaved submission.\")' \u2014 replace with 'raise ValueError(\"Cannot anonymise unsaved submission.\")' since this is a programming error not a form error. In app/eventyay/base/models/organizer.py lines 48 and 73: check_access_permissions raises bare Exception with translated strings \u2014 replace with a new PermissionDenied (django.core.exceptions.PermissionDenied) or custom OrganizerAccessDenied(PermissionDenied) class.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_security_bare_exception",
+              "review::.::holistic::error_consistency::err_user_validation_bare_exception",
+              "review::.::holistic::error_consistency::err-002"
+            ]
+          },
+          {
+            "title": "Fix FileCleanupMixin silent swallow and GeoCodeView mixed error response",
+            "detail": "In app/eventyay/base/models/mixins.py line 184: FileCleanupMixin._delete_files() uses 'with suppress(Exception)' around value.delete(save=False). Replace with explicit 'try: value.delete(save=False) except OSError as e: logger.warning(\"Failed to delete file %s: %s\", value.name, e)'. Import logging at top of mixins.py if not already present (it is not). In app/eventyay/control/views/geo.py line 29: returns {'success': False, 'results': []} when neither opencagedata_apikey nor mapquest_apikey is set; line 32 returns the same structure for IOError. Differentiate: change line 29 return to JsonResponse({'success': False, 'error': 'no_api_key', 'results': []}) and line 32 return to JsonResponse({'success': False, 'error': 'network_error', 'results': []}). In app/eventyay/base/services/announcement.py: the @database_sync_to_async functions at lines 8, 15, 20, 32 do not handle DoesNotExist \u2014 wrap each in try/except Model.DoesNotExist and return None or re-raise as a named exception the consumer handles.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_file_cleanup_silent_swallow",
+              "review::.::holistic::error_consistency::err_geo_silent_mixed_failure",
+              "review::.::holistic::error_consistency::err-001",
+              "review::.::holistic::error_consistency::err-004"
+            ]
+          },
+          {
+            "title": "Audit and replace 30+ bare Exception() calls in production domain code",
+            "detail": "In app/eventyay/base/models/mixins.py line 98: LogMixin.log_action calls LogEntry.objects.create() with no exception handling. If the DB write fails (connection lost, constraint violation), the exception propagates silently upward through business logic. Wrap lines 98-115 in 'try: ... except Exception: logger.exception(\"Failed to persist log entry for action %s\", action); return None'. Similarly in app/eventyay/base/models/base.py line 93-118 (LoggingMixin version), wrap the logentry.save() at line 113 in try/except. Additional bare Exception raises in base/models: confirm with grep -rn 'raise Exception(' app/eventyay/base/models/ -- targets include app/eventyay/base/models/mail.py line 406, app/eventyay/base/models/invoices.py line 246. Create app/eventyay/base/exceptions.py with domain exceptions: InvoiceDeleteError, MailTemplateError, ScheduleConflictError. Replace each raise Exception(...) with the typed variant.",
+            "effort": "medium",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err-005",
+              "review::.::holistic::error_consistency::err_bare_exception_domain_violations"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "review::.::holistic::error_consistency::err-005",
+      "confidence": "medium",
+      "detector": "review",
+      "file": ".",
+      "summary": "LoggingMixin.log_action() and LogMixin.log_action() have no exception handling around the LogEntry.objects.create() / logentry.save() DB write",
+      "detail": {
+        "holistic": true,
+        "dimension": "error_consistency",
+        "related_files": [
+          "app/eventyay/base/models/base.py",
+          "app/eventyay/base/models/mixins.py"
+        ],
+        "evidence": [
+          "base.py LoggingMixin.log_action() lines 93-118: logentry.save() is called with no try/except",
+          "mixins.py LogMixin.log_action() LogEntry.objects.create() is called with no try/except",
+          "A DB constraint violation in audit logging would propagate as an uncaught IntegrityError to the business operation that triggered it"
+        ],
+        "suggestion": "Wrap the DB write in try/except (IntegrityError, OperationalError) and log at ERROR level if the audit entry cannot be written; this prevents audit logging failures from aborting business transactions",
+        "reasoning": "",
+        "summary_hash": "3a43c239"
+      },
+      "status": "open",
+      "kind": "issue",
+      "primary_command": "desloppify plan resolve \"review::.::holistic::error_consistency::err-005\" --note \"<what you did>\" --confirm",
+      "queue_position": 57,
+      "plan_cluster": {
+        "name": "error-handling-standardization",
+        "description": "Replace bare Exception raises and silent swallows in production code: 30+ bare Exception() calls in domain services, FileCleanupMixin.save swallowing all exceptions, replay attack detection using bare Exception, user-facing validation raising bare Exception, GeoCodeView collapsing error types",
+        "total_items": 9,
+        "action_steps": [
+          {
+            "title": "Replace bare Exception() raises in security and validation code with domain exceptions",
+            "detail": "In app/eventyay/eventyay_common/views/auth.py lines 485 and 498: 'raise Exception(Possible replay attack...)'. A RepeatedResetDenied class already exists at line 310 in the same file but is unrelated. Create class ReplayAttackDetected(Exception) at the top of app/eventyay/eventyay_common/views/auth.py (or in a new app/eventyay/eventyay_common/exceptions.py). Replace both bare Exception raises with 'raise ReplayAttackDetected(...)'. In app/eventyay/control/views/user.py lines 81 and 94: same replay attack pattern \u2014 replace with 'raise ReplayAttackDetected(...)' importing from eventyay_common.exceptions. In app/eventyay/orga/forms/cfp.py lines 316 and 318: 'raise Exception(_(\"JSON file does not contain a list.\"))' \u2014 replace with 'raise forms.ValidationError(_(\"JSON file does not contain a list.\"))'. In app/eventyay/orga/forms/submission.py line 214: 'raise Exception(\"Cannot anonymise unsaved submission.\")' \u2014 replace with 'raise ValueError(\"Cannot anonymise unsaved submission.\")' since this is a programming error not a form error. In app/eventyay/base/models/organizer.py lines 48 and 73: check_access_permissions raises bare Exception with translated strings \u2014 replace with a new PermissionDenied (django.core.exceptions.PermissionDenied) or custom OrganizerAccessDenied(PermissionDenied) class.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_security_bare_exception",
+              "review::.::holistic::error_consistency::err_user_validation_bare_exception",
+              "review::.::holistic::error_consistency::err-002"
+            ]
+          },
+          {
+            "title": "Fix FileCleanupMixin silent swallow and GeoCodeView mixed error response",
+            "detail": "In app/eventyay/base/models/mixins.py line 184: FileCleanupMixin._delete_files() uses 'with suppress(Exception)' around value.delete(save=False). Replace with explicit 'try: value.delete(save=False) except OSError as e: logger.warning(\"Failed to delete file %s: %s\", value.name, e)'. Import logging at top of mixins.py if not already present (it is not). In app/eventyay/control/views/geo.py line 29: returns {'success': False, 'results': []} when neither opencagedata_apikey nor mapquest_apikey is set; line 32 returns the same structure for IOError. Differentiate: change line 29 return to JsonResponse({'success': False, 'error': 'no_api_key', 'results': []}) and line 32 return to JsonResponse({'success': False, 'error': 'network_error', 'results': []}). In app/eventyay/base/services/announcement.py: the @database_sync_to_async functions at lines 8, 15, 20, 32 do not handle DoesNotExist \u2014 wrap each in try/except Model.DoesNotExist and return None or re-raise as a named exception the consumer handles.",
+            "effort": "small",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err_file_cleanup_silent_swallow",
+              "review::.::holistic::error_consistency::err_geo_silent_mixed_failure",
+              "review::.::holistic::error_consistency::err-001",
+              "review::.::holistic::error_consistency::err-004"
+            ]
+          },
+          {
+            "title": "Audit and replace 30+ bare Exception() calls in production domain code",
+            "detail": "In app/eventyay/base/models/mixins.py line 98: LogMixin.log_action calls LogEntry.objects.create() with no exception handling. If the DB write fails (connection lost, constraint violation), the exception propagates silently upward through business logic. Wrap lines 98-115 in 'try: ... except Exception: logger.exception(\"Failed to persist log entry for action %s\", action); return None'. Similarly in app/eventyay/base/models/base.py line 93-118 (LoggingMixin version), wrap the logentry.save() at line 113 in try/except. Additional bare Exception raises in base/models: confirm with grep -rn 'raise Exception(' app/eventyay/base/models/ -- targets include app/eventyay/base/models/mail.py line 406, app/eventyay/base/models/invoices.py line 246. Create app/eventyay/base/exceptions.py with domain exceptions: InvoiceDeleteError, MailTemplateError, ScheduleConflictError. Replace each raise Exception(...) with the typed variant.",
+            "effort": "medium",
+            "issue_refs": [
+              "review::.::holistic::error_consistency::err-005",
+              "review::.::holistic::error_consistency::err_bare_exception_domain_violations"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "queue": {
+    "total": 4,
+    "mode": "execution"
+  },
+  "narrative": {
+    "phase": "middle_grind",
+    "headline": "\u26a0 4 security issues \u2014 review before other cleanup. 1422 issues open. Test health (4.0%) needs attention \u2014 run `desloppify next` to start. (87 review issues \u2014 run `desloppify show review --status open`)",
+    "dimensions": {
+      "lowest_dimensions": [
+        {
+          "name": "Test health",
+          "strict": 4.0,
+          "failing": 1,
+          "impact": 0.0
+        },
+        {
+          "name": "Type safety",
+          "strict": 14.8,
+          "failing": 6,
+          "impact": 0.0,
+          "subjective": true,
+          "impact_description": "re-review to improve"
+        },
+        {
+          "name": "Test strategy",
+          "strict": 23.0,
+          "failing": 2,
+          "impact": 0.0,
+          "subjective": true,
+          "impact_description": "re-review to improve"
+        }
+      ],
+      "biggest_gap_dimensions": [
+        {
+          "name": "Test health",
+          "lenient": 99.8,
+          "strict": 4.0,
+          "gap": 95.8,
+          "wontfix_count": 666
+        },
+        {
+          "name": "Security",
+          "lenient": 99.9,
+          "strict": 96.1,
+          "gap": 3.8,
+          "wontfix_count": 163
+        }
+      ],
+      "stagnant_dimensions": [
+        {
+          "name": "Code quality",
+          "strict": 91.2,
+          "stuck_scans": 5
+        },
+        {
+          "name": "Security",
+          "strict": 96.1,
+          "stuck_scans": 5
+        },
+        {
+          "name": "File health",
+          "strict": 90.2,
+          "stuck_scans": 5
+        },
+        {
+          "name": "Duplication",
+          "strict": 99.6,
+          "stuck_scans": 5
+        },
+        {
+          "name": "Test health",
+          "strict": 4.0,
+          "stuck_scans": 5
+        }
+      ]
+    },
+    "actions": [
+      {
+        "type": "reorganize",
+        "detector": "orphaned",
+        "count": 390,
+        "description": "390 orphaned issues \u2014 delete dead files or relocate with `desloppify move`",
+        "command": "desloppify show orphaned --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 1,
+        "lane": "restructure"
+      },
+      {
+        "type": "reorganize",
+        "detector": "flat_dirs",
+        "count": 16,
+        "description": "16 flat_dirs issues \u2014 create subdirectories and use `desloppify move`",
+        "command": "desloppify show flat_dirs --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 2,
+        "lane": "restructure"
+      },
+      {
+        "type": "reorganize",
+        "detector": "coupling",
+        "count": 43,
+        "description": "43 coupling issues \u2014 fix boundary violations with `desloppify move`",
+        "command": "desloppify show coupling --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 3,
+        "lane": "restructure"
+      },
+      {
+        "type": "reorganize",
+        "detector": "facade",
+        "count": 15,
+        "description": "15 facade issues \u2014 flatten re-export facades or consolidate barrel files",
+        "command": "desloppify show facade --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 4,
+        "lane": "restructure"
+      },
+      {
+        "type": "refactor",
+        "detector": "structural",
+        "count": 166,
+        "description": "166 structural issues \u2014 review large files \u2014 split only when responsibilities are clearly separable",
+        "command": "desloppify show structural --status open",
+        "impact": 0.0,
+        "dimension": "File health",
+        "priority": 5,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "refactor",
+        "detector": "props",
+        "count": 3,
+        "description": "3 props issues \u2014 split bloated components, extract sub-components",
+        "command": "desloppify show props --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 6,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "refactor",
+        "detector": "dupes",
+        "count": 29,
+        "description": "29 dupes issues \u2014 extract shared utility or consolidate duplicates",
+        "command": "desloppify show dupes --status open",
+        "impact": 0.0,
+        "dimension": "Duplication",
+        "priority": 7,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "refactor",
+        "detector": "dict_keys",
+        "count": 205,
+        "description": "205 dict_keys issues \u2014 fix dict key mismatches \u2014 dead writes are likely dead code, schema drift suggests a typo or missed rename",
+        "command": "desloppify show dict_keys --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 8,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "refactor",
+        "detector": "test_coverage",
+        "count": 1,
+        "description": "1 test_coverage issues in 1 cluster(s) \u2014 run `desloppify next`",
+        "command": "desloppify next",
+        "impact": 0.0,
+        "dimension": "Test health",
+        "priority": 9,
+        "clusters": [
+          "auto/test_coverage"
+        ],
+        "cluster_count": 1,
+        "lane": "test_coverage"
+      },
+      {
+        "type": "refactor",
+        "detector": "signature",
+        "count": 65,
+        "description": "65 signature issues \u2014 consolidate inconsistent function signatures",
+        "command": "desloppify show signature --status open",
+        "impact": 0.0,
+        "dimension": "Unknown",
+        "priority": 10,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "refactor",
+        "detector": "responsibility_cohesion",
+        "count": 53,
+        "description": "53 responsibility_cohesion issues \u2014 split modules with too many responsibilities \u2014 extract focused sub-modules",
+        "command": "desloppify show responsibility_cohesion --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 11,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "refactor",
+        "detector": "review",
+        "count": 87,
+        "description": "87 review issues need investigation \u2014 run `desloppify show review --status open` to see them",
+        "command": "desloppify show review --status open",
+        "impact": 0.0,
+        "dimension": "Unknown",
+        "priority": 12,
+        "lane": "refactor_1"
+      },
+      {
+        "type": "manual_fix",
+        "detector": "smells",
+        "count": 339,
+        "description": "339 smells issues \u2014 inspect with `desloppify next` and fix manually",
+        "command": "desloppify show smells --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 13,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "manual_fix",
+        "detector": "global_mutable_config",
+        "count": 6,
+        "description": "6 global_mutable_config issues \u2014 refactor module-level mutable state \u2014 use explicit init functions or dependency injection",
+        "command": "desloppify show global_mutable_config --status open",
+        "impact": 0.0,
+        "dimension": "Code quality",
+        "priority": 14,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "manual_fix",
+        "detector": "security",
+        "count": 4,
+        "description": "4 security issues \u2014 review and fix security issues \u2014 prioritize by severity",
+        "command": "desloppify show security --status open",
+        "impact": 0.0,
+        "dimension": "Security",
+        "priority": 15,
+        "lane": "refactor_0"
+      },
+      {
+        "type": "debt_review",
+        "detector": null,
+        "description": "4.1 pts of wontfix debt \u2014 review stale decisions",
+        "command": "desloppify show --status wontfix",
+        "gap": 4.1,
+        "priority": 16,
+        "lane": "debt_review"
+      }
+    ],
+    "strategy": {
+      "fixer_leverage": {
+        "auto_fixable_count": 0,
+        "total_count": 1596,
+        "coverage": 0.0,
+        "impact_ratio": 0.0,
+        "recommendation": "none"
+      },
+      "lanes": {
+        "restructure": {
+          "actions": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "file_count": 433,
+          "total_impact": 0.0,
+          "automation": "manual",
+          "run_first": false
+        },
+        "refactor_0": {
+          "actions": [
+            5,
+            6,
+            7,
+            8,
+            10,
+            11,
+            13,
+            14,
+            15
+          ],
+          "file_count": 348,
+          "total_impact": 0.0,
+          "automation": "manual",
+          "run_first": false
+        },
+        "refactor_1": {
+          "actions": [
+            12
+          ],
+          "file_count": 1,
+          "total_impact": 0.0,
+          "automation": "manual",
+          "run_first": false
+        },
+        "test_coverage": {
+          "actions": [
+            9
+          ],
+          "file_count": 1,
+          "total_impact": 0.0,
+          "automation": "manual",
+          "run_first": false
+        },
+        "debt_review": {
+          "actions": [
+            16
+          ],
+          "file_count": 0,
+          "total_impact": 0.0,
+          "automation": "manual",
+          "run_first": false
+        }
+      },
+      "can_parallelize": true,
+      "hint": "4 independent workstreams, safe to parallelize. Rescan after each phase to verify. Review: 87 issue(s) \u2014 `desloppify show review --status open`."
+    },
+    "tools": {
+      "fixers": [],
+      "move": {
+        "available": true,
+        "relevant": true,
+        "reason": "390 orphaned files + 43 coupling violations + 16 flat directories",
+        "usage": "desloppify move <source> <dest> [--dry-run]"
+      },
+      "plan": {
+        "command": "desloppify plan",
+        "description": "Generate prioritized markdown cleanup plan"
+      },
+      "badge": {
+        "generated": true,
+        "in_readme": false,
+        "path": "scorecard.png",
+        "recommendation": "Add to README: <img src=\"scorecard.png\" width=\"100%\">"
+      }
+    },
+    "debt": {
+      "overall_gap": 4.1,
+      "wontfix_count": 893,
+      "worst_dimension": "Test health",
+      "worst_gap": 95.8,
+      "trend": "stable"
+    },
+    "milestone": null,
+    "primary_action": {
+      "command": "desloppify show orphaned --status open",
+      "description": "390 orphaned issues \u2014 delete dead files or relocate with `desloppify move`"
+    },
+    "why_now": "4 independent workstreams, safe to parallelize. Rescan after each phase to verify. Review: 87 issue(s) \u2014 `desloppify show review --status open`.",
+    "verification_step": {
+      "command": "desloppify scan",
+      "reason": "revalidate after changes"
+    },
+    "risk_flags": [
+      {
+        "type": "wontfix_gap",
+        "severity": "high",
+        "message": "Strict/lenient gap is 4.1 pts with 893 wontfix issues"
+      }
+    ],
+    "strict_target": {
+      "target": 95.0,
+      "current": 47.0,
+      "gap": 48.0,
+      "state": "below",
+      "warning": null
+    },
+    "reminders": [],
+    "reminder_history": {
+      "zone_classification": 3,
+      "report_scores": 7,
+      "review_issues_pending": 3,
+      "stagnant_nudge": 4,
+      "wontfix_growing": 3,
+      "feedback_nudge": 3
+    }
+  },
+  "agent_notes": [
+    "Do NOT use `desloppify plan skip` unless the user explicitly asks you to skip an item.",
+    "If you cannot fix an item, report it and move to the next one.",
+    "For cluster items: if the autofix_hint finds 0 results, drill into individual issues with the primary_command."
+  ],
+  "plan": {
+    "active": true,
+    "focus": null,
+    "clusters": [
+      {
+        "name": "auto/test_coverage",
+        "description": "Fix 9 test coverage issues",
+        "item_count": 0
+      },
+      {
+        "name": "base-services-orders-refactor",
+        "description": "Extract and deduplicate logic in base/services/orders.py (2856 LOC): split voucher/ticket cancel logic, deduplicate payment cancellation try/except blocks, extract _check_positions 270-line flat loop, fix duplicate refund state constants, break apart the _perform_operations 293-line monolith",
+        "item_count": 8
+      },
+      {
+        "name": "api-views-submission-cleanup",
+        "description": "Clean up api/views/submission.py: collapse 5 identical boilerplate @action methods into a shared dispatcher, extract shared JWT Authorization header parsing into a single helper, remove leftover debug comment",
+        "item_count": 8
+      },
+      {
+        "name": "api-views-event-cleanup",
+        "description": "Clean up api/views/event.py: remove commented-out endpoint bodies returning 501, remove docstring bloat on 6-line method, remove deprecated UserFavouriteView and its route",
+        "item_count": 4
+      },
+      {
+        "name": "auth-model-type-contracts",
+        "description": "Fix type contract violations in base/models/auth.py: add None guard before email.strip() crash in gravatar URL generation, correct get_short_name and get_full_name annotations from -> str to -> str | None, fix get_blocked_users annotated -> bool that returns a list",
+        "item_count": 5
+      },
+      {
+        "name": "payment-contract-fixes",
+        "description": "Fix return type lies in base/payment.py: execute_payment annotated -> str returns None, new_refund_render annotated -> str returns None; correct mail.py docstring that documents wrong exception class",
+        "item_count": 4
+      },
+      {
+        "name": "log-action-consolidation",
+        "description": "Merge duplicate LoggingMixin and LogMixin implementations: both define identical log_action with same deferred imports and logic; consolidate into single mixin, standardize parameter order, add type annotations, fix signal discarding caller args",
+        "item_count": 8
+      },
+      {
+        "name": "dependency-hygiene",
+        "description": "Clean up pyproject.toml and library dependencies: remove unused jwcrypto/django-markup/cbor2, move test-only packages to dev group, complete bleach to nh3 migration, complete pytz to zoneinfo migration, replace pandas with openpyxl for single read_excel call, remove backport importlib_metadata",
+        "item_count": 12
+      },
+      {
+        "name": "incomplete-migration-cleanup",
+        "description": "Remove overdue deprecated shims: orga_permissions shim past v2025.1.0 deadline, PluginType enum marked DO NOT USE, country_old compat CharField, order_payment compat fields with TODO remove after pretix 2.2, legacy API dead branches with pragma-excluded code",
+        "item_count": 11
+      },
+      {
+        "name": "arch-layer-violations",
+        "description": "Remove module-scope cross-layer imports that violate the base -> api/control/presale dependency direction: base/configurations/default_setting.py importing control.forms, base/ files importing api.models, base/payment.py importing presale, base/models/schedule.py importing agenda layer",
+        "item_count": 4
+      },
+      {
+        "name": "initialization-coupling-fixes",
+        "description": "Fix module-scope initialization coupling: move celery import inside AppConfig.ready(), guard signal app_cache fills for concurrent access, fix middleware _supported partial init, move PAYMENT_PROVIDERS from module-global to per-request",
+        "item_count": 4
+      },
+      {
+        "name": "checkin-permission-fixes",
+        "description": "Fix checkin view permission inconsistency in control/views/checkin.py: show() permission gate says can_view_orders but post() checks can_change_orders; extract scattered permission string literals into named constants",
+        "item_count": 2
+      },
+      {
+        "name": "order-model-type-fixes",
+        "description": "Fix inconsistent return value contracts in base/models/orders.py: meta_info_data returns {}, json.loads result, or None on different error paths; fix mail context type annotation that declares dict[str, Any] = None",
+        "item_count": 5
+      },
+      {
+        "name": "encode-email-and-api-utils-dedup",
+        "description": "Deduplicate encode_email (identical SHA-256-upper-7 logic in eventyay_common/utils.py:42 and agenda/views/utils.py:193) and collapse api/utils.py trivial 3-line wrapper into its callsite or delete the file",
+        "item_count": 3
+      },
+      {
+        "name": "pagination-mixin-and-common-dedup",
+        "description": "Merge duplicate PaginationMixin implementations (control/views/__init__.py:49 and common/views/mixins.py:341) and clarify boundary between common/ and eventyay_common/ packages",
+        "item_count": 2
+      },
+      {
+        "name": "naming-cleanup",
+        "description": "Rename misleadingly generic or informal function and property names across agenda, api, control, and eventyay_common: sneakpeek_redirect, process_login, do_export, process_task_data, do_show_quota_left, misleading parse_ics_token (already covered in encode-email cluster)",
+        "item_count": 10
+      },
+      {
+        "name": "test-namespace-and-coverage",
+        "description": "Fix test infrastructure: rename tests/tickets/ and tests/talk/conftest.py to use eventyay.* namespace; add behavioral assertions to presale smoke tests; add tests for base/models/mixins.py, EventPluginSignal, eventyay_common.utils, and base/services/orders.py",
+        "item_count": 6
+      },
+      {
+        "name": "logic-and-error-clarity",
+        "description": "Fix small logic issues: bool simplification in eventyay_common/utils.py, double-delete edge case in presale cart.py, widget unguarded open() crash when finders.find returns None, bbb service broad except returning False instead of propagating",
+        "item_count": 12
+      },
+      {
+        "name": "mid-level-service-fixes",
+        "description": "Fix medium-severity service layer issues: remove debug print() in connections.py, fix config double-save in features/live, consolidate dual world/event key in event service, move model-layer mail dispatch to service layer, fix ad-hoc permission alias translation",
+        "item_count": 10
+      },
+      {
+        "name": "design-refactors",
+        "description": "Refactor design-level issues: replace 15+ branch if/elif logdisplay dispatch with a dispatch dict, fix cart keyfunc to return consistent tuple shape, split base/email.py three-class mixed concern, separate control/views/__init__.py barrel from mixin definitions",
+        "item_count": 8
+      },
+      {
+        "name": "base-package-structure",
+        "description": "Address flat directory overload in base/: create domain subpackages in base/models/ (cfp/, ticketing/, video/), create domain subpackages in base/services/, expose world.py from base/models/__init__.py, document helpers/ into focused sub-directories, add Announcement to LoggingMixin",
+        "item_count": 17
+      },
+      {
+        "name": "auto/review-cross_module_architecture",
+        "description": "Address 6 cross_module_architecture review issues",
+        "item_count": 6
+      },
+      {
+        "name": "auto/review-high_level_elegance",
+        "description": "Address 4 high_level_elegance review issues",
+        "item_count": 4
+      },
+      {
+        "name": "auto/review-convention_outlier",
+        "description": "Address 5 convention_outlier review issues",
+        "item_count": 5
+      },
+      {
+        "name": "auto/review-error_consistency",
+        "description": "Address 5 error_consistency review issues",
+        "item_count": 4
+      },
+      {
+        "name": "auto/review-naming_quality",
+        "description": "Address 4 naming_quality review issues",
+        "item_count": 4
+      },
+      {
+        "name": "auto/review-abstraction_fitness",
+        "description": "Address 5 abstraction_fitness review issues",
+        "item_count": 4
+      },
+      {
+        "name": "auto/review-dependency_health",
+        "description": "Address 5 dependency_health review issues",
+        "item_count": 5
+      },
+      {
+        "name": "auto/review-low_level_elegance",
+        "description": "Address 4 low_level_elegance review issues",
+        "item_count": 4
+      },
+      {
+        "name": "auto/review-mid_level_elegance",
+        "description": "Address 5 mid_level_elegance review issues",
+        "item_count": 5
+      },
+      {
+        "name": "auto/review-authorization_consistency",
+        "description": "Address 5 authorization_consistency review issues",
+        "item_count": 5
+      },
+      {
+        "name": "auto/review-ai_generated_debt",
+        "description": "Address 2 ai_generated_debt review issues",
+        "item_count": 2
+      },
+      {
+        "name": "auto/review-contract_coherence",
+        "description": "Address 6 contract_coherence review issues",
+        "item_count": 6
+      },
+      {
+        "name": "auto/review-logic_clarity",
+        "description": "Address 4 logic_clarity review issues",
+        "item_count": 4
+      },
+      {
+        "name": "auto/review-type_safety",
+        "description": "Address 6 type_safety review issues",
+        "item_count": 6
+      },
+      {
+        "name": "auto/review-test_strategy",
+        "description": "Address 4 test_strategy review issues",
+        "item_count": 2
+      },
+      {
+        "name": "auto/review-api_surface_coherence",
+        "description": "Address 5 api_surface_coherence review issues",
+        "item_count": 5
+      },
+      {
+        "name": "api-views-auth-bypass",
+        "description": "Fix authentication bypass pattern in api/views/event.py: hook CreateEventView and EventThemeView into standard DRF auth/permission classes instead of rolling empty authentication_classes and manual JWT parsing inline",
+        "item_count": 5
+      },
+      {
+        "name": "service-function-signatures",
+        "description": "Normalize inconsistent function signatures across base/services/orders.py and base/services/checkin.py: standardize user/auth parameter order, replace int PKs with model instances, reduce perform_checkin arity, document error contracts",
+        "item_count": 10
+      },
+      {
+        "name": "service-return-contracts",
+        "description": "Fix undocumented and inconsistent return value contracts in base/services/orders.py and base/services/checkin.py: approve_order/deny_order return pk silently, mark_order_refunded hides dual-role auth param, perform_checkin returns bare None on nonce match, build_time has implicit None fallback",
+        "item_count": 11
+      },
+      {
+        "name": "presale-order-view-fixes",
+        "description": "Fix OrderDetailMixin.order property in presale/views/order.py: dead else-else both returning None with misleading timing-attack comment, and fix presale/utils.py _detect_event 160-line function mixing three domain-resolution paths",
+        "item_count": 8
+      },
+      {
+        "name": "abstraction-layer-cleanup",
+        "description": "Remove or justify thin abstraction wrappers: parse_ics_token one-line pass-through in agenda/views/utils.py, deprecated event_view wrapper in presale/utils.py, FakeStatsD/StatsD protocol class in core/utils/statsd.py, and announcement service **kwargs pass-through in base/services/announcement.py",
+        "item_count": 6
+      },
+      {
+        "name": "ai-debt-cleanup",
+        "description": "Remove AI-generated code artifacts in base/signals.py and base/services/orders.py: delete step-narrating comments in check_plugin_active that restate the code, and remove dead mark_order_paid stub that raises NotImplementedError with no callers",
+        "item_count": 4
+      },
+      {
+        "name": "submission-deprecated-cleanup",
+        "description": "Remove SubmissionFavouriteDeprecated model, serializer, and routed view from api/urls.py, base/models/submission.py, and api/views; clean up PageNumberPagination dual-mode and legacy PRETIX_LEGACY_ALIASES log mapping with no retirement path",
+        "item_count": 4
+      },
+      {
+        "name": "pyproject-dependency-fixes",
+        "description": "Fix pyproject.toml dependency hygiene: remove duplicate bleach while nh3 migration is incomplete, remove responses library from production deps, pin four @main git deps to SHA, evaluate vat-moss-forked Python 3.13 blocker, move pandas/matplotlib to optional extras",
+        "item_count": 5
+      },
+      {
+        "name": "design-coherence-fixes",
+        "description": "Fix design coherence issues: split base/services/orders.py 2839-line mixed file, move SubmissionFavouriteDeprecatedSerializer out of model file, fix PaginationMixin bare except, collapse WebhookEvent empty __init__ and module-level singleton",
+        "item_count": 4
+      },
+      {
+        "name": "error-handling-standardization",
+        "description": "Replace bare Exception raises and silent swallows in production code: 30+ bare Exception() calls in domain services, FileCleanupMixin.save swallowing all exceptions, replay attack detection using bare Exception, user-facing validation raising bare Exception, GeoCodeView collapsing error types",
+        "item_count": 9
+      },
+      {
+        "name": "model-naming-and-base-cleanup",
+        "description": "Rename PretalxModel base class to EventyayModel across all domain models, consolidate LoggingMixin/LogMixin dual naming, resolve three overlapping common/ eventyay_common/ core/ packages",
+        "item_count": 5
+      },
+      {
+        "name": "settings-import-coupling",
+        "description": "Fix module-scope settings snapshots and import-time coupling: TALK_HOSTNAME snapshot at base/models/event.py line 84, LANGUAGE_CODES_MAPPING computed at import time in common/language.py, base/__init__.py importing celery_app at module scope, app_cache populated without thread lock at base/signals.py",
+        "item_count": 4
+      },
+      {
+        "name": "order-model-logic-fixes",
+        "description": "Fix logic defects in base/models/orders.py and base/services/orders.py: _check_positions err accumulation inconsistency, user_cancel_allowed EXPIRED status exclusion without explanation, extend_order single-use closure with two call sites, get_schedule_exporter_content duplicated -my prefix check",
+        "item_count": 6
+      },
+      {
+        "name": "service-layer-cleanup",
+        "description": "Fix medium-severity service layer issues: replace apps.ready() opaque side-effect imports with explicit signal registration, replace update_announcement _meta.get_fields() reflection with static field list, merge CompatibleCountryField/CountryField duplicate to_internal_value logic, add raise/return to get_user_by_id/token/client_id None-on-DoesNotExist trio",
+        "item_count": 6
+      },
+      {
+        "name": "type-annotation-sweep",
+        "description": "Add type annotations across service and API boundaries: Optional[dict] for nullable params in mail/service functions, fix perform_checkin given_answers bare dict, fix OrderChangeManager.add_position addon_to type, cancel_order task Optional int, Order.STATUS_REFUNDED alias type clarity, missing return type annotations on all major service functions, TypedDict for email/order context dicts",
+        "item_count": 18
+      },
+      {
+        "name": "convention-and-naming-fixes",
+        "description": "Fix naming quality and convention outlier issues: rename check_access_permissions to clarify it raises exceptions, fix GeoCodeView variable shadowing in comprehensions, fix VersionView pretix/pretix_numeric key names, consolidate api/views/ structural patterns, address control/forms granularity inconsistency and control/views/__init__.py mass re-export",
+        "item_count": 15
+      },
+      {
+        "name": "package-layout-fixes",
+        "description": "Fix package layout violations: base/models/ flat directory with 60+ files needs subdirectory grouping, base/models/transaction.py and cache.py are infrastructure files misplaced in models/, base/models/auth_token.py imports from api.versions (upward dependency), core/ package wraps two utility files that belong in base/utils/",
+        "item_count": 4
+      },
+      {
+        "name": "base-layer-import-fixes",
+        "description": "Fix inverted and circular layer dependencies: base/forms imports from control, base/payment.py imports presale views at top level, base/models/devices.py imports from api.auth at module load, base/models/event.py deferred imports presale.style and cfp.flow, LogMixin defers imports from api.models on every call",
+        "item_count": 10
+      },
+      {
+        "name": "test-coverage-expansion",
+        "description": "Expand test coverage for critical paths with no tests: base/services/orders.py (2839 LOC, no service-level tests), perform_checkin (no unit tests), BasePaymentProvider (no tests), full order lifecycle integration test, stable/test_api.py with only status code assertions",
+        "item_count": 7
+      },
+      {
+        "name": "authorization-consistency",
+        "description": "Fix view-level authorization gaps in orga/admin.py and orga/permissions.py: add AdministratorPermissionRequiredMixin to AttendeeListView and SubmissionListView, consolidate dual auth systems (EventPermissionRequiredMixin vs rules library PermissionRequired), and extract magic permission string literals into a shared constants module",
+        "item_count": 4
+      }
+    ],
+    "total_ordered": 89,
+    "total_skipped": 8,
+    "plan_overrides_narrative": true
+  },
+  "overall_score": 51.2,
+  "objective_score": 95.1,
+  "strict_score": 47.0,
+  "scorecard_dimensions": [
+    {
+      "name": "File health",
+      "score": 90.2,
+      "strict": 90.2,
+      "checks": 842,
+      "failing": 113,
+      "tier": 3,
+      "subjective": false
+    },
+    {
+      "name": "AI generated debt",
+      "score": 67.5,
+      "strict": 67.5,
+      "checks": 10,
+      "failing": 2,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "ai_generated_debt"
+      ]
+    },
+    {
+      "name": "API coherence",
+      "score": 36.7,
+      "strict": 36.7,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "api_surface_coherence"
+      ]
+    },
+    {
+      "name": "Abstraction fit",
+      "score": 43.2,
+      "strict": 43.2,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "abstraction_fitness"
+      ]
+    },
+    {
+      "name": "Auth consistency",
+      "score": 37.4,
+      "strict": 37.4,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "authorization_consistency"
+      ]
+    },
+    {
+      "name": "Code quality",
+      "score": 91.2,
+      "strict": 91.2,
+      "checks": 6089,
+      "failing": 960,
+      "tier": 3,
+      "subjective": false
+    },
+    {
+      "name": "Contracts",
+      "score": 35.7,
+      "strict": 35.7,
+      "checks": 10,
+      "failing": 6,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "contract_coherence"
+      ]
+    },
+    {
+      "name": "Convention drift",
+      "score": 38.8,
+      "strict": 38.8,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "convention_outlier"
+      ]
+    },
+    {
+      "name": "Cross-module arch",
+      "score": 28.0,
+      "strict": 28.0,
+      "checks": 10,
+      "failing": 6,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "cross_module_architecture"
+      ]
+    },
+    {
+      "name": "Dep health",
+      "score": 28.0,
+      "strict": 28.0,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "dependency_health"
+      ]
+    },
+    {
+      "name": "Design coherence",
+      "score": 41.7,
+      "strict": 41.7,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "design_coherence"
+      ]
+    },
+    {
+      "name": "Duplication",
+      "score": 99.6,
+      "strict": 99.6,
+      "checks": 5325,
+      "failing": 29,
+      "tier": 3,
+      "subjective": false
+    },
+    {
+      "name": "Elegance",
+      "score": 39.1,
+      "strict": 39.1,
+      "checks": 30,
+      "failing": 13,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "high_level_elegance",
+        "low_level_elegance",
+        "mid_level_elegance"
+      ]
+    },
+    {
+      "name": "Error consistency",
+      "score": 28.7,
+      "strict": 28.7,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "error_consistency"
+      ]
+    },
+    {
+      "name": "Security",
+      "score": 99.9,
+      "strict": 96.1,
+      "checks": 2010,
+      "failing": 4,
+      "tier": 4,
+      "subjective": false
+    },
+    {
+      "name": "Stale migration",
+      "score": 25.8,
+      "strict": 25.8,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "incomplete_migration"
+      ]
+    },
+    {
+      "name": "Structure nav",
+      "score": 35.8,
+      "strict": 35.8,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "package_organization"
+      ]
+    },
+    {
+      "name": "Test health",
+      "score": 99.8,
+      "strict": 4.0,
+      "checks": 8368,
+      "failing": 1,
+      "tier": 4,
+      "subjective": false
+    },
+    {
+      "name": "Test strategy",
+      "score": 23.0,
+      "strict": 23.0,
+      "checks": 10,
+      "failing": 2,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "test_strategy"
+      ]
+    },
+    {
+      "name": "Type safety",
+      "score": 14.8,
+      "strict": 14.8,
+      "checks": 10,
+      "failing": 6,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "type_safety"
+      ]
+    }
+  ],
+  "subjective_measures": [
+    {
+      "name": "AI generated debt",
+      "score": 67.5,
+      "strict": 67.5,
+      "checks": 10,
+      "failing": 2,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "ai_generated_debt"
+      ]
+    },
+    {
+      "name": "API coherence",
+      "score": 36.7,
+      "strict": 36.7,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "api_surface_coherence"
+      ]
+    },
+    {
+      "name": "Abstraction fit",
+      "score": 43.2,
+      "strict": 43.2,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "abstraction_fitness"
+      ]
+    },
+    {
+      "name": "Auth consistency",
+      "score": 37.4,
+      "strict": 37.4,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "authorization_consistency"
+      ]
+    },
+    {
+      "name": "Contracts",
+      "score": 35.7,
+      "strict": 35.7,
+      "checks": 10,
+      "failing": 6,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "contract_coherence"
+      ]
+    },
+    {
+      "name": "Convention drift",
+      "score": 38.8,
+      "strict": 38.8,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "convention_outlier"
+      ]
+    },
+    {
+      "name": "Cross-module arch",
+      "score": 28.0,
+      "strict": 28.0,
+      "checks": 10,
+      "failing": 6,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "cross_module_architecture"
+      ]
+    },
+    {
+      "name": "Dep health",
+      "score": 28.0,
+      "strict": 28.0,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "dependency_health"
+      ]
+    },
+    {
+      "name": "Design coherence",
+      "score": 41.7,
+      "strict": 41.7,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "design_coherence"
+      ]
+    },
+    {
+      "name": "Elegance",
+      "score": 39.1,
+      "strict": 39.1,
+      "checks": 30,
+      "failing": 13,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "high_level_elegance",
+        "low_level_elegance",
+        "mid_level_elegance"
+      ]
+    },
+    {
+      "name": "Error consistency",
+      "score": 28.7,
+      "strict": 28.7,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "error_consistency"
+      ]
+    },
+    {
+      "name": "Stale migration",
+      "score": 25.8,
+      "strict": 25.8,
+      "checks": 10,
+      "failing": 5,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "incomplete_migration"
+      ]
+    },
+    {
+      "name": "Structure nav",
+      "score": 35.8,
+      "strict": 35.8,
+      "checks": 10,
+      "failing": 4,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "package_organization"
+      ]
+    },
+    {
+      "name": "Test strategy",
+      "score": 23.0,
+      "strict": 23.0,
+      "checks": 10,
+      "failing": 2,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "test_strategy"
+      ]
+    },
+    {
+      "name": "Type safety",
+      "score": 14.8,
+      "strict": 14.8,
+      "checks": 10,
+      "failing": 6,
+      "tier": 4,
+      "subjective": true,
+      "placeholder": false,
+      "cli_keys": [
+        "type_safety"
+      ]
+    }
+  ],
+  "config": {
+    "target_strict_score": 95,
+    "review_max_age_days": 30,
+    "review_batch_max_files": 80,
+    "holistic_max_age_days": 30,
+    "generate_scorecard": true,
+    "badge_path": "scorecard.png",
+    "exclude": [
+      ".venv",
+      "app/eventyay/locale",
+      "app/eventyay/static/bootstrap",
+      "app/eventyay/static/are-you-sure",
+      "app/eventyay/static/charts",
+      "app/eventyay/static/clipboard",
+      "app/eventyay/static/colorpicker",
+      "app/eventyay/static/datetimepicker",
+      "app/eventyay/static/fabric",
+      "app/eventyay/static/fileupload",
+      "app/eventyay/static/fontawesome",
+      "app/eventyay/static/fonts",
+      "app/eventyay/static/iframeresizer",
+      "app/eventyay/static/images",
+      "app/eventyay/static/jquery",
+      "app/eventyay/static/jsi18n",
+      "app/eventyay/static/leaflet",
+      "app/eventyay/static/lightbox",
+      "app/eventyay/static/moment",
+      "app/eventyay/static/pdfjs",
+      "app/eventyay/static/rrule",
+      "app/eventyay/static/select2",
+      "app/eventyay/static/slider",
+      "app/eventyay/static/sortable",
+      "app/eventyay/static/typeahead",
+      "app/eventyay/static/vendored",
+      "app/eventyay/static/vuejs",
+      "app/eventyay/static/pretixbase",
+      "app/eventyay/static/pretixcontrol",
+      "app/eventyay/static/pretixpresale",
+      "app/eventyay/static/control",
+      "app/eventyay/plugins/ticketoutputpdf/migrations",
+      "app/eventyay/plugins/badges/migrations",
+      "app/eventyay/plugins/banktransfer/migrations",
+      "app/eventyay/plugins/sendmail/migrations",
+      "app/eventyay/eventyay_common/migrations",
+      "app/eventyay/api/migrations",
+      "app/eventyay/helpers/migrations",
+      "app/eventyay/base/migrations",
+      "app/eventyay/multidomain/migrations"
+    ],
+    "ignore": [],
+    "ignore_metadata": {},
+    "zone_overrides": {},
+    "review_dimensions": [],
+    "large_files_threshold": 0,
+    "props_threshold": 0,
+    "issue_noise_budget": 10,
+    "issue_noise_global_budget": 0,
+    "execution_log_max_entries": 10000,
+    "needs_rescan": false,
+    "languages": {},
+    "commit_tracking_enabled": true,
+    "commit_pr": 0,
+    "commit_default_branch": "",
+    "commit_message_template": "desloppify: {status} {count} issue(s) \u2014 {summary}",
+    "trust_plugins": false
+  }
+}

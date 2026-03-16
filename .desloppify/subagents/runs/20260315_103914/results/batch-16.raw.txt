@@ -1,0 +1,131 @@
+{
+  "batch": "contract_coherence",
+  "batch_index": 16,
+  "assessments": {
+    "contract_coherence": 54.0
+  },
+  "dimension_notes": {
+    "contract_coherence": {
+      "evidence": [
+        "BasePaymentProvider.form_authenticate and request_authenticate in base/auth.py use bare 'return' (implicit None) instead of 'return None', making the return contract ambiguous vs. returning a User",
+        "BasePaymentProvider.execute_payment (base/payment.py line 666) is documented as 'returns a URL string or None', annotated -> str | None, but the default implementation just returns None with no URL logic; subclass FreeOrderProvider.execute_payment (line 923) returns nothing (implicit None) rather than str|None explicitly",
+        "new_refund_control_form_render (payment.py line 845) annotated -> str | None but body just has bare 'return' (line 901), inconsistent with the str | None annotation",
+        "_cancel_order internal function (orders.py line 426) accepts order as int|Order, user as int|User, api_token as int|TeamAPIToken — parameter types diverge from annotation-free signature, the caller mark_order_refunded (line 248) passes order.pk (int) not an Order object, breaking the stated docstring contract",
+        "OrderChangeManager.open_payment (orders.py line 2302) is a property returning an Optional OrderPayment but has no type annotation; its docstring is absent",
+        "CompatibleCountryField.to_representation (api/serializers/order.py line 65) has no return on the else branch — can return None implicitly, violating the contract that the representation is always a string",
+        "mail() function (base/services/mail.py line 70) has no return type annotation despite being a primary public API; docstring says it 'raises SendMailException' on failure, but also returns None silently in the INVALID_ADDRESS fast-path",
+        "approve_order() and deny_order() (orders.py) both return order.pk (an int) but have no return type annotation; callers in API views treat the return value as an int, creating implicit contracts",
+        "BaseAuthBackend.form_authenticate / request_authenticate (base/auth.py lines 58-75) say 'return a User object or None' but implementations do bare 'return' (no value), which is not None explicitly — subtle violation",
+        "perform_checkin (services/checkin.py line 377) docstring says :param clist: 'The order position to check in' — same description as :param op, docstring copy-paste error misleads readers about the parameter"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A — score is below 85"
+    }
+  },
+  "dimension_judgment": {
+    "contract_coherence": {
+      "strengths": [
+        "BasePaymentProvider defines a thorough plugin contract with well-documented docstrings on every hook method",
+        "Order service functions (approve_order, deny_order, cancel_order) consistently raise OrderError on invalid states rather than silently returning",
+        "perform_checkin has a solid explicit docstring listing all parameters and expected behavior",
+        "Model methods like Order.gracefully_delete use isinstance guards before accepting int/object polymorphism, making the duck-typed contract visible"
+      ],
+      "issue_character": "The dominant pattern is annotation lies and implicit-None return paths: functions declare a return type (or imply one by docstring) but some code paths return bare None or use bare 'return', and several key service functions accept polymorphic int|Model parameters with no type annotation at all.",
+      "score_rationale": "The codebase has a coherent plugin-framework contract in BasePaymentProvider and stable OrderError exception contracts, which are meaningful strengths. However, multiple high-traffic surfaces (execute_payment, form_authenticate, CompatibleCountryField.to_representation, mail()) have annotation lies or missing return type contracts, and at least one docstring literally duplicates its description across two parameters. At the mid-range, this puts the score around 54 — better than code with no contracts at all, but below the threshold expected of production-quality Python where public APIs are consistently annotated and documented."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-01",
+      "summary": "BaseAuthBackend.form_authenticate / request_authenticate use bare 'return' instead of 'return None', breaking stated contract",
+      "related_files": ["app/eventyay/base/auth.py"],
+      "evidence": [
+        "Line 64: 'return' (no value) where docstring says 'return a User object or None'",
+        "Line 75: same pattern in request_authenticate"
+      ],
+      "suggestion": "Replace bare 'return' with 'return None' on both methods to make the None contract explicit and satisfy type checkers",
+      "confidence": "high",
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-02",
+      "summary": "new_refund_control_form_render annotated -> str | None but body ends with bare 'return'",
+      "related_files": ["app/eventyay/base/payment.py"],
+      "evidence": [
+        "Line 845: def new_refund_control_form_render(...) -> str | None",
+        "Line 901: bare 'return' rather than 'return None'"
+      ],
+      "suggestion": "Change bare 'return' to 'return None' for consistency with annotation",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-03",
+      "summary": "CompatibleCountryField.to_representation has no return on else-branch, implicitly returns None which breaks the str contract",
+      "related_files": ["app/eventyay/api/serializers/order.py"],
+      "evidence": [
+        "Lines 65-69: if instance.country: return str(...); elif hasattr(...): return ...; — missing final else/return, so if neither branch matches, None is returned silently"
+      ],
+      "suggestion": "Add 'return None' or 'return \"\"' as an explicit fallback else-branch to honor the serialization contract",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-04",
+      "summary": "perform_checkin docstring duplicates :param op description for :param clist",
+      "related_files": ["app/eventyay/base/services/checkin.py"],
+      "evidence": [
+        "Line 396: ':param clist: The order position to check in' — should read 'The check-in list to validate against'"
+      ],
+      "suggestion": "Fix docstring for :param clist to accurately describe the CheckinList parameter",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-05",
+      "summary": "_cancel_order and mark_order_refunded accept int|Model polymorphically with no type annotation, creating hidden caller contracts",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "mark_order_refunded line 248: passes order.pk (int) to _cancel_order which resolves it internally with Order.objects.get",
+        "_cancel_order line 426: 'if isinstance(order, int): order = Order.objects.get(pk=order)' — undocumented polymorphism"
+      ],
+      "suggestion": "Either annotate the parameter as Union[int, Order] and document the behavior, or enforce a single type at the API boundary by requiring Order objects everywhere",
+      "confidence": "medium",
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-06",
+      "summary": "approve_order and deny_order return order.pk (int) with no return annotation; callers depend on this implicitly",
+      "related_files": ["app/eventyay/base/services/orders.py"],
+      "evidence": [
+        "approve_order line 356: 'return order.pk' — no -> int annotation",
+        "deny_order line 400: 'return order.pk' — same"
+      ],
+      "suggestion": "Add '-> int' return type annotation to both functions",
+      "confidence": "high",
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "Plugin base classes evolved organically; abstract hooks that return None were never systematically annotated",
+      "Service functions that accept int|Model for Celery task compatibility were not documented as polymorphic"
+    ],
+    "likely_symptoms": ["CC-03 (serializer silent None return) is most likely to produce real bugs at runtime"],
+    "possible_false_positives": []
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "batch": "cross_module_architecture",
+  "batch_index": 1,
+  "assessments": {
+    "cross_module_architecture": 48.0
+  },
+  "dimension_notes": {
+    "cross_module_architecture": {
+      "evidence": [
+        "app/eventyay/base/models/devices.py line 10: `from eventyay.api.auth.devicesecurity import DEVICE_SECURITY_PROFILES` — the Device model in base imports API-layer security profiles at module load time, creating a hard upward dependency from base → api",
+        "app/eventyay/base/payment.py lines 47-48: `from eventyay.presale.views import get_cart, get_cart_total` and `from eventyay.presale.views.cart import cart_session, get_or_create_cart_id` — top-level import of presale view functions from within a base-layer module",
+        "app/eventyay/base/services/cart.py lines 46-51: top-level imports from `eventyay.presale.signals` and a deferred import at line 1424 from `eventyay.presale.views.cart`",
+        "app/eventyay/base/services/mail.py line 54: `from eventyay.presale.ical import get_ical` — base services importing from presale layer",
+        "app/eventyay/base/configurations/default_setting.py lines 40-56: imports `ExtFileField, FontSelect, MultipleLanguagesWidget, SingleLanguageWidget` from `eventyay.control.forms` and deferred import of `get_fonts` from `eventyay.presale.style`",
+        "app/eventyay/base/forms/questions.py lines 62, 67: imports `ExtFileField, SplitDateTimeField` from `eventyay.control.forms` and `question_form_fields` from `eventyay.presale.signals`",
+        "app/eventyay/base/forms/user.py line 13: `from eventyay.control.forms import SingleLanguageWidget`",
+        "app/eventyay/base/views/mixins.py line 24: `from eventyay.presale.signals import contact_form_fields_overrides`",
+        "app/eventyay/base/models/event.py lines 2081, 2091: deferred imports of `regenerate_css` from `eventyay.presale.style` inside `enable_plugin()` and `disable_plugin()` — the core Event model calls into presale styling",
+        "app/eventyay/base/models/event.py line 2583: deferred import of `CfPFlow` from `eventyay.cfp.flow` inside a base Event model method",
+        "app/eventyay/base/models/mixins.py lines 51-58: `log_action()` in `LogMixin` defers imports of `OAuthAccessToken`, `OAuthApplication` from `eventyay.api.models` and `notify_webhooks` from `eventyay.api.webhooks` — base model mixin knows about api layer at runtime",
+        "app/eventyay/base/models/base.py lines 64-71: `LoggingMixin.log_action()` performs identical deferred imports from `eventyay.api.models` and `eventyay.api.webhooks`",
+        "app/eventyay/base/models/__init__.py exports 100+ symbols including models from 40+ sub-modules — this single hub re-exports the entire domain model, making it the blast radius center for any model change",
+        "app/eventyay/api/views/organizer.py line 49: `from eventyay.presale.style import regenerate_organizer_css` — api layer importing from presale"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high"
+    }
+  },
+  "dimension_judgment": {
+    "cross_module_architecture": {
+      "strengths": [
+        "Django signal infrastructure in base/signals.py correctly uses deferred coupling and plugin filtering to keep receivers loosely coupled",
+        "The base/models/__init__.py explicitly declares __all__, making the public surface of the hub intentional rather than accidental",
+        "API middleware (api/middleware.py) is self-contained and correctly imports only from base models"
+      ],
+      "issue_character": "The base layer persistently imports upward from presale, control, api, and cfp — violating the foundational dependency direction and meaning any change in those upper layers can cascade into base models and services.",
+      "score_rationale": "This codebase scores well below the 70 (adequate) anchor. Multiple confirmed hard upward imports from base into presale, control, api, and cfp exist at module load time and in method bodies. The base/models/devices.py importing DEVICE_SECURITY_PROFILES from api.auth at import time is the starkest violation — the core device model is tightly coupled to the api authentication layer. base/payment.py importing from presale view functions at module top level creates a circular-pressure coupling between two major subsystems. These violations are spread across models, services, forms, and configurations — not isolated incidents."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch_base_imports_api_devicesecurity",
+      "summary": "base/models/devices.py imports DEVICE_SECURITY_PROFILES from eventyay.api.auth at module load time",
+      "related_files": [
+        "app/eventyay/base/models/devices.py",
+        "app/eventyay/api/auth/devicesecurity.py"
+      ],
+      "evidence": [
+        "Line 10 of devices.py: `from eventyay.api.auth.devicesecurity import DEVICE_SECURITY_PROFILES`",
+        "This is a top-level import making the Device model depend on api-layer authentication code at import time"
+      ],
+      "suggestion": "Move DEVICE_SECURITY_PROFILES (or an equivalent registry) to eventyay.base.auth or eventyay.base.devices_security so the data lives in the base layer where the model consuming it lives. The api.auth module can then import from base if needed.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_to_api_upward_dependency"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch_base_payment_imports_presale_views",
+      "summary": "base/payment.py imports presale view functions at module top level, coupling core payment logic to the presale UI layer",
+      "related_files": [
+        "app/eventyay/base/payment.py",
+        "app/eventyay/presale/views/__init__.py",
+        "app/eventyay/presale/views/cart.py"
+      ],
+      "evidence": [
+        "Lines 47-48: `from eventyay.presale.views import get_cart, get_cart_total` and `from eventyay.presale.views.cart import cart_session, get_or_create_cart_id`",
+        "base/payment.py is imported by multiple parts of the system including api/views; this pulls presale view code into every import chain"
+      ],
+      "suggestion": "Extract cart-session utilities (get_cart, get_cart_total, cart_session, get_or_create_cart_id) into eventyay.base.services.cart or eventyay.base.cart_utils. The presale views can then be thin wrappers calling into base.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_to_presale_upward_dependency"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch_base_forms_imports_control",
+      "summary": "base/forms/questions.py and base/forms/user.py import form widgets from eventyay.control.forms, reversing the dependency direction",
+      "related_files": [
+        "app/eventyay/base/forms/questions.py",
+        "app/eventyay/base/forms/user.py",
+        "app/eventyay/control/forms/__init__.py"
+      ],
+      "evidence": [
+        "base/forms/questions.py line 62: `from eventyay.control.forms import ExtFileField, SplitDateTimeField`",
+        "base/forms/user.py line 13: `from eventyay.control.forms import SingleLanguageWidget`",
+        "base/configurations/default_setting.py line 40: `from eventyay.control.forms import (ExtFileField, FontSelect, MultipleLanguagesWidget, SingleLanguageWidget)`"
+      ],
+      "suggestion": "Move shared widgets and form fields (ExtFileField, SplitDateTimeField, SingleLanguageWidget, MultipleLanguagesWidget, FontSelect) to eventyay.base.forms or eventyay.common.forms. control can import from base, not vice versa.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_to_control_upward_dependency"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch_base_event_model_imports_presale_cfp",
+      "summary": "The base Event model calls into presale.style and cfp.flow at runtime via deferred imports inside model methods",
+      "related_files": [
+        "app/eventyay/base/models/event.py"
+      ],
+      "evidence": [
+        "Line 2081: `from eventyay.presale.style import regenerate_css` inside enable_plugin()",
+        "Line 2091: same deferred import inside disable_plugin()",
+        "Line 2583: `from eventyay.cfp.flow import CfPFlow` deferred import inside a base Event method"
+      ],
+      "suggestion": "Replace the deferred presale.style coupling with a signal (e.g., a new `plugin_enabled` signal that presale.style subscribes to). The cfp.flow reference should be mediated through a signal or a registered hook rather than a direct import from base into cfp.",
+      "confidence": "high",
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "root_cause_cluster": "base_to_presale_upward_dependency"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch_logmixin_deferred_api_imports",
+      "summary": "LogMixin.log_action() in base/models/mixins.py defers imports from eventyay.api.models and eventyay.api.webhooks on every call",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "mixins.py lines 51-58: deferred imports of OAuthAccessToken, OAuthApplication from eventyay.api.models and notify_webhooks from eventyay.api.webhooks inside log_action()",
+        "base.py lines 64-71: LoggingMixin.log_action() has identical deferred imports",
+        "This pattern is repeated in every model that calls log_action, creating hidden runtime coupling to the api layer from the base mixin"
+      ],
+      "suggestion": "Introduce a notification registry or use signals to decouple notification/webhook triggering from the base mixin. log_action() should emit a signal (e.g., `log_entry_created`) that the api layer subscribes to, rather than calling api.webhooks directly.",
+      "confidence": "high",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "base_to_api_upward_dependency"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch_base_models_hub_oversize",
+      "summary": "base/models/__init__.py re-exports 100+ symbols from 40+ submodules, creating a single hub with unlimited blast radius",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py"
+      ],
+      "evidence": [
+        "__init__.py imports from 40 submodule files and re-exports 100+ names in __all__",
+        "This includes unrelated concerns: User, Order, StreamingServer, Exhibitor, Poll, Roulette, BBBCall — all reachable through one import path",
+        "Any model change anywhere in base/models/ can cause ripple re-imports throughout the codebase"
+      ],
+      "suggestion": "Segment the public API of base/models/ into domain-aligned sub-packages with their own __init__.py (e.g., base.models.events, base.models.orders, base.models.auth). Consumer code should import from the sub-package rather than the mega-hub.",
+      "confidence": "medium",
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "root_cause_cluster": "hub_module_oversize"
+    }
+  ],
+  "retrospective": {
+    "root_causes": [
+      "The codebase originated from a fork (pretix) whose architecture was then merged with a conference management system (pretalx); the layer boundaries were never re-established after the merge, leaving base importing from presale/control/api/cfp",
+      "Deferred imports were used as a band-aid to break import cycles rather than restructuring boundaries"
+    ],
+    "likely_symptoms": [
+      "arch_logmixin_deferred_api_imports — the deferred imports are a symptom of the base→api cycle, not the root",
+      "arch_base_event_model_imports_presale_cfp — the deferred imports inside Event.enable_plugin are a symptom of missing signal contracts"
+    ],
+    "possible_false_positives": []
+  }
+}

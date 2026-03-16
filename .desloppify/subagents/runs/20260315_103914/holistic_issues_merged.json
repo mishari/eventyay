@@ -1,0 +1,2600 @@
+{
+  "assessments": {
+    "abstraction_fitness": {
+      "score": 43.2,
+      "components": [
+        "Abstraction Leverage",
+        "Indirection Cost",
+        "Interface Honesty",
+        "Delegation Density",
+        "Definition Directness",
+        "Type Discipline"
+      ],
+      "component_scores": {
+        "Abstraction Leverage": 58.0,
+        "Indirection Cost": 55.0,
+        "Interface Honesty": 65.0,
+        "Delegation Density": 60.0,
+        "Definition Directness": 68.0,
+        "Type Discipline": 62.0
+      }
+    },
+    "ai_generated_debt": 67.5,
+    "api_surface_coherence": 36.7,
+    "authorization_consistency": 37.4,
+    "contract_coherence": 35.7,
+    "convention_outlier": 38.8,
+    "cross_module_architecture": 28.0,
+    "dependency_health": 28.0,
+    "design_coherence": 41.7,
+    "error_consistency": 28.7,
+    "high_level_elegance": 34.5,
+    "incomplete_migration": 25.8,
+    "initialization_coupling": 46.8,
+    "logic_clarity": 50.8,
+    "low_level_elegance": 46.4,
+    "mid_level_elegance": 36.5,
+    "naming_quality": 52.5,
+    "package_organization": 35.8,
+    "test_strategy": 23.0,
+    "type_safety": 14.8
+  },
+  "dimension_notes": {
+    "cross_module_architecture": {
+      "evidence": [
+        "base/models/mixins.py LogMixin.log_action() contains function-level imports of eventyay.api.models (OAuthAccessToken, OAuthApplication) and eventyay.api.webhooks \u2014 a downward dependency from the model layer into the API layer",
+        "base/models/base.py LoggingMixin.log_action() repeats the exact same function-level imports of eventyay.api.models and eventyay.api.webhooks, creating two near-identical cross-layer coupling points",
+        "base/models/room.py imports eventyay.api.serializers.i18n.I18nAwareModelSerializer \u2014 a model importing from the API serializer layer, which inverts the expected dependency direction",
+        "base/models/devices.py imports eventyay.api.auth.devicesecurity.DEVICE_SECURITY_PROFILES \u2014 a model depending on an API auth module",
+        "base/configurations/default_setting.py imports eventyay.api.serializers.fields and eventyay.api.serializers.i18n \u2014 configuration code depending on API serializers",
+        "base/shredder.py imports eventyay.api.serializers (order, waitinglist) for serialization \u2014 cross-layer boundary violation",
+        "base/models/auth_token.py imports eventyay.api.versions.CURRENT_VERSIONS \u2014 model depending on API versioning constants",
+        "base/signals.py docstrings still reference pretix.* and pretalx.* namespaces throughout (pretix.base.models.Event, pretix.base.payment, pretix.base.shredder, etc.) \u2014 stale namespace references across ~15 signal docstrings",
+        "default_roles() function defined identically in both base/models/event.py and base/models/world.py \u2014 duplicate logic without a shared boundary",
+        "LogMixin (mixins.py) and LoggingMixin (base.py) are parallel implementations of nearly identical log_action() methods; both exported from base/models/__init__.py without distinction",
+        "base/models/__init__.py exports 100+ symbols \u2014 a very large hub surface that every consumer imports from, creating high blast radius for any model change",
+        "control/views/__init__.py imports and re-exports ~30 admin views from admin_views.py 'to maintain backward compatibility' \u2014 a shim without documented active external consumers"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "high_level_elegance": {
+      "evidence": [
+        "Top-level package names (base, api, control, presale, agenda, cfp, orga, schedule, common, plugins) broadly reflect domain capabilities, which is a positive signal",
+        "base/models/__init__.py exports 100+ symbols \u2014 the hub is enormous; a new engineer cannot infer from the package structure which models belong to ticketing vs. conference-talk vs. video-streaming concerns",
+        "base/models/ contains models for radically different domains: ticketing (Order, Invoice, Voucher), conference-talk (Submission, Review, Slot, Schedule, Track), video/AV infrastructure (BBBServer, JanusServer, TurnServer, StreamingServer), social/chat (Channel, ChatEvent, Membership, Poll, Roulette), and CMS (Announcement, Page, Exhibitor) \u2014 all in one monolithic model package",
+        "base/models/world.py exists inside base/models despite 'World' being a video-platform concept (from venueless heritage); it does not belong in the same namespace as ticketing base models",
+        "base/models/bbb.py, janus.py, turn.py, streaming.py, chat.py, poll.py, roulette.py, exhibitor.py, poster.py all live next to orders.py, invoices.py, product.py \u2014 no sub-namespace separates concerns",
+        "eventyay/eventyay_common/ sub-package name is redundant ('eventyay common' inside 'eventyay'), suggesting unclear ownership of what belongs in 'common' vs. 'eventyay_common'",
+        "Two parallel services layers: base/services/ and the eventyay_common/ package both provide cross-cutting services without a documented boundary rule",
+        "base/services/__init__.py is empty \u2014 the services layer advertises itself but has no cohesive entry point or exported API",
+        "base/__init__.py imports celery_app at module level in addition to AppConfig.ready() \u2014 double-registration of the same module-load side effect",
+        "Announcement model (base/models/announcement.py) does not inherit from LoggedModel, TimestampedModel, or PretalxModel; its timestamp field is manually named 'timestamp' while sibling models use 'created'/'updated' from TimestampedModel \u2014 ownership/structure is inconsistent",
+        "control/global_settings.py uses template 'pretixcontrol/global_settings.html' \u2014 template path references legacy pretixcontrol namespace, showing the control subsystem still has legacy surface bleed-through",
+        "control/views/shredder.py template 'pretixcontrol/shredder/index.html' \u2014 same issue"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "convention_outlier": {
+      "evidence": [
+        "Naming: Models use snake_case fields consistently (standard Django), and view classes use PascalCase \u2014 no case mixing at the naming level",
+        "Timestamp naming inconsistency: TimestampedModel defines 'created'/'updated'; Announcement.timestamp, ChatEvent.timestamp, Channel has no timestamps at all \u2014 three different timestamp conventions in the same models/ directory",
+        "LogMixin (mixins.py) and LoggingMixin (base.py) are sibling classes with near-identical interfaces but different names, creating vocabulary divergence",
+        "Organizer._SettingsStore uses underscore-prefix naming (Organizer_SettingsStore) while Event_SettingsStore uses the same pattern \u2014 this is internally consistent but highly unusual against Django naming norms",
+        "control/forms/organizer_forms/ sub-package contains files with verbose snake_case names (base_organizer_footer_link_form_set.py, organizer_settings_form.py) while sibling control/forms/ files use shorter names (checkin.py, orders.py, product.py) \u2014 inconsistent granularity between sibling directories",
+        "control/forms/ has a flat structure while control/forms/organizer_forms/ has a deeply nested sub-package \u2014 the two levels of nesting apply different conventions",
+        "agenda/views/utils.py defines functions (get_schedule_exporters, build_public_schedule_exporters, get_schedule_exporter_content, is_public_schedule_empty) \u2014 mixing factory patterns with boolean-predicate names in one utility module is typical, but the pattern is consistent within the file",
+        "API views: most follow ModelViewSet pattern but stripe.py uses a bare function-based view (@csrf_exempt, def stripe_webhook_view) \u2014 inconsistent with sibling DRF viewset pattern across api/views/",
+        "base/exporter.py has a module-level logger import after blank lines ('logger = ...' then 'from collections import ...' \u2014 standard import ordering violated)",
+        "agenda/views/utils.py defines logger at line 48 after several function definitions, while common Django convention places logger at top of module",
+        "base/models/ flat structure: 40+ model files in one directory with no sub-grouping, while control/forms/organizer_forms/ has a dedicated sub-package for just 6 files",
+        "consts.py: contains TIMEZONE_CHOICES, DEFAULT_PLUGINS, SizeKey, and EVENTYAY_EMAIL_NONE_VALUE \u2014 mixing infrastructure constants with domain defaults and an enum in one file"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "error_consistency": {
+      "evidence": [
+        "base/models/mixins.py FileCleanupMixin.save() line 155: `except Exception:` \u2014 catches any exception including programming errors; only the pre-save DB read is protected, so a misbehaving ORM or DB connectivity error is silently swallowed",
+        "base/models/mixins.py FileCleanupMixin._delete_files() line 184: `with suppress(Exception):` \u2014 file deletion errors are fully silenced with no logging; a failed file cleanup goes unnoticed",
+        "base/models/organizer.py check_access_permissions() line 48: `raise Exception(...)` \u2014 generic Exception raised with a translated string, violating agents.md rule 3 ('preserve specific exception types; do not replace with generic Exception'); a TODO comment acknowledges this",
+        "base/signals.py check_plugin_active() \u2014 returns bool without raising; calling code in EventPluginSignal.send_robust() uses try/except Exception to catch any receiver error and appends it to results \u2014 mixed strategy: some errors propagate, some are collected",
+        "api/views/stripe.py: catches ValueError and stripe.error.SignatureVerificationError specifically \u2014 good specific error handling at this boundary",
+        "agenda/views/utils.py load_starred_ics_token() lines 77-80: catches (signing.BadSignature, KeyError, TypeError, ...) specifically \u2014 appropriate I/O boundary handling",
+        "control/views/__init__.py LargeResultSetPage.has_next(): bare `except:` (line 94) \u2014 catches all exceptions including SystemExit, KeyboardInterrupt; returns False instead of propagating or logging",
+        "base/models/base.py LoggingMixin.log_action() line 112: no exception handling around logentry.save() \u2014 a DB write in audit logging can raise unhandled IntegrityError or OperationalError",
+        "base/models/mixins.py LogMixin.log_action() similarly has no exception handling around LogEntry.objects.create()",
+        "base/services/announcement.py: @database_sync_to_async wrapped functions have no exception handling; DoesNotExist from get_announcement() would propagate as an unhandled exception to the Channels consumer",
+        "Multiple files across the codebase (20+ files) use broad `except Exception` \u2014 mechanical scan confirms 338 smell findings; while some are intentional (top-level Celery task handlers), many are in business logic paths",
+        "Webhook delivery (api/webhooks.py): 7 pretix.* references detected by grep; error handling strategy for failed webhook HTTP calls is unclear from seed file evidence"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "naming_quality": {
+      "evidence": [
+        "Domain nouns are generally well-chosen: Order, Invoice, Voucher, Submission, Review, TalkSlot, Schedule, CheckinList communicate intent clearly",
+        "View class names are descriptive and action-oriented: ScheduleFeed, ScheduleMixin, ShredderMixin, GlobalSettingsView, StartShredView, ShredDownloadView",
+        "Signal names in base/signals.py are clear and domain-specific: order_placed, order_paid, order_canceled, checkin_created, event_live_issues, validate_order, validate_cart",
+        "base/models/mixins.py: LogMixin.log_action() is well-named. FileCleanupMixin._delete_files(), assign_code(), generate_code() are all self-explanatory",
+        "check_plugin_active() (signals.py) is a good predicate name with boolean semantics",
+        "SENSITIVE_KEYS constant in mixins.py is clear; it is also redefined inline as 'sensitive_keys' in the same function \u2014 the local redefinition adds noise",
+        "LogMixin.log_action() has an 'orga' boolean parameter \u2014 abbreviated name that is used as a project-wide convention (seen in LogEntry.is_orga_action), acceptable as established convention",
+        "BBBCall model: 'attendee_pw' and 'moderator_pw' \u2014 'pw' is an abbreviation not matching codebase conventions that prefer full words (e.g., 'password')",
+        "BBBServer.rooms_only \u2014 name is ambiguous; it is unclear from the name whether it means 'only available to rooms' or 'only creates rooms'; a more descriptive name would improve clarity",
+        "consts.py: SizeKey enum members named UPLOAD_SIZE_CSV, RESPONSE_SIZE_WEBHOOK \u2014 these are clear and well-structured",
+        "agenda/views/utils.py: redirect_to_presale_with_warning() is overly specific as a utility name but accurately describes behavior; escape_json_for_script() and is_public_schedule_empty() are clear predicate/action names",
+        "FileCleanupMixin.process_image() \u2014 generic verb 'process' reveals nothing about what processing occurs (thumbnail generation? format conversion?); the method delegates to task_process_image, which suggests 'process' here means 'trigger async processing'",
+        "LogMixin._get_attribute() \u2014 internal helper with a generic name; 'resolve_dotted_attribute' or '_resolve_url_path' would be more specific",
+        "LogMixin.move.alters_data = True \u2014 annotating an attribute on a method is non-standard Django ORM usage; the method name 'move' is fine but the pattern is unusual",
+        "base/models/base.py LockModel.refresh_for_update() \u2014 good name, clearly communicates select_for_update semantics",
+        "control/views/shredder.py: StartShredView \u2014 'start shred' clearly communicates intent"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "abstraction_fitness": {
+      "evidence": [
+        "app/eventyay/agenda/views/utils.py: parse_ics_token() is a one-liner wrapper that calls load_starred_ics_token() and discards its second return value \u2014 adds no policy beyond forwarding.",
+        "app/eventyay/base/services/announcement.py: create_announcement(), get_announcement(), get_announcements(), update_announcement() are thin async wrappers over ORM calls with minimal logic \u2014 the announcement business rules (allowed_states, is_visible) live on the model. The wrapper layer adds database_sync_to_async decoration but otherwise forwards arguments verbatim.",
+        "app/eventyay/base/auth.py: BaseAuthBackend defines 5 methods, all returning None or raising NotImplementedError \u2014 a pure abstract base with no enforced extension contract beyond convention.",
+        "app/eventyay/presale/utils.py: _event_view() nests a closure inside another closure (event_view_wrapper inside _event_view), adding 2 wrapper hops before reaching func. The public event_view() is a deprecated noop that just returns its argument.",
+        "app/eventyay/common/views/helpers.py: get_static() is a tiny 5-line helper that forwards a path + content_type to FileResponse \u2014 duplicates boilerplate that Django's static file serving already handles for dev.",
+        "app/eventyay/base/models/__init__.py: flat re-export of 100+ symbols from sub-modules, creating a large monolithic public surface (expected as a facade pattern, but still creates a hub).",
+        "app/eventyay/base/services/cart.py: imports from eventyay.base.services.checkin._save_answers \u2014 a private symbol leaking across service boundary.",
+        "app/eventyay/base/payment.py: BasePaymentProvider imports from eventyay.presale.views (cart_session, get_or_create_cart_id) \u2014 reversed dependency direction from a base module into a presale view layer.",
+        "app/eventyay/eventyay_common/utils.py: EventCreatedFor StrEnum defined here alongside utility functions for JWT/video generation \u2014 mixing domain constants with utility functions in a single utils module.",
+        "Widespread utils.py pattern: agenda, presale, event, schedule, social, eventyay_common all have utils.py catch-all modules rather than bounded domain packages."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "",
+      "sub_axes": {
+        "abstraction_leverage": 58.0,
+        "indirection_cost": 55.0,
+        "interface_honesty": 65.0,
+        "delegation_density": 60.0,
+        "definition_directness": 68.0,
+        "type_discipline": 62.0
+      }
+    },
+    "dependency_health": {
+      "evidence": [
+        "pyproject.toml declares 190+ production dependencies, including multiple overlapping libraries: bleach (HTML sanitization) and nh3 (HTML sanitization) both present \u2014 nh3 seen used in checkinlists/exporters.py; bleach may be redundant.",
+        "orjson and standard json are both present \u2014 orjson seen used in some serializers, json used in many views/services, but no consistent policy on which to prefer.",
+        "PyJWT (pyjwt) and jwcrypto both present \u2014 jwt used in eventyay_common/utils.py and base/models/event.py; jwcrypto likely used for WebAuthn but is heavy for that purpose.",
+        "pandas listed as a dependency (heavy ML/data library); usage appears limited to analytics graphs (features/analytics/graphs/utils.py) which could use lighter alternatives.",
+        "matplotlib listed as a dependency \u2014 also potentially only for analytics charts.",
+        "Both requests and aiohttp present \u2014 HTTP clients for sync vs async paths, which is expected in a mixed sync/ASGI app but worth monitoring.",
+        "vat-moss-forked pinned with note 'Hold back by eventyay-stripe' and comment 'This library prevents us from being compatible with Python v3.13+' \u2014 version conflict actively blocking Python upgrade.",
+        "pyproject.toml uses >= version specifiers for all dependencies (no upper bounds), making reproducible builds dependent entirely on the lock mechanism.",
+        "eventyay-paypal, eventyay-stripe, eventyay-bitpay, exhibition all pinned to @main branches of GitHub repos \u2014 unpinned upstream main branches introduce silent breakage risk.",
+        "pdf2image and pdfrw both present for PDF handling alongside reportlab \u2014 three PDF libraries for potentially overlapping use cases.",
+        "bleach and nh3 both present for HTML sanitization \u2014 nh3 is the newer Rust-based replacement for bleach; having both suggests incomplete migration."
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium",
+      "issues_preventing_higher_score": ""
+    },
+    "low_level_elegance": {
+      "evidence": [
+        "app/eventyay/agenda/views/utils.py: get_schedule_exporter_content() is a 50-line function with 4 nested if/elif branches for the '-my' exporter case \u2014 same SubmissionFavourite query is duplicated in two branches (token path and user path) that differ only in the user_id source.",
+        "app/eventyay/agenda/views/utils.py: get_schedule_exporter_content() sets exporter.schedule, exporter.is_orga, exporter.talk_ids as ad-hoc attributes on the exporter object rather than passing them explicitly \u2014 implicit state mutation on an external object.",
+        "app/eventyay/presale/utils.py: _detect_event() is a 155-line function combining: domain detection (3 branches), locale setup, live-check with session fallback, ticket viewing permission check, plugin check, and signal dispatch \u2014 multiple interleaved responsibilities in a single function.",
+        "app/eventyay/presale/utils.py: _detect_event() has a bare 'except Exception as exc' for session load failure that continues with 'can_access' unchanged \u2014 swallows potential configuration errors silently.",
+        "app/eventyay/common/views/cache.py: etag_cache_page() checks requested_etag vs current_etag three times across the function \u2014 the ETag comparison logic is spread across two separate if-branches rather than being resolved in one place.",
+        "app/eventyay/base/views/mixins.py: BaseQuestionsViewMixin.forms property builds formlist with a complex inline conditional setting form.show_copy_answers_to_addon_button \u2014 the boolean expression spans 10 lines, testing 5 settings flags.",
+        "app/eventyay/base/services/checkin.py: get_logic_environment() defines nested closures (build_time, is_before) locally \u2014 intention-revealing and well-contained.",
+        "app/eventyay/common/views/helpers.py: get_static() is well-contained \u2014 clear 5-line function, no side effects beyond serving file.",
+        "app/eventyay/agenda/views/utils.py: build_public_schedule_exporters() is relatively direct \u2014 iterates signals, checks show_public, sorts with a clear key, builds result list.",
+        "app/eventyay/base/services/cart.py: CartError.__init__ does conditional translation logic in __init__ \u2014 acceptable but the args tuple re-assignment (self.args = args before reassigning msg) is surprising."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "mid_level_elegance": {
+      "evidence": [
+        "app/eventyay/base/services/announcement.py: async service functions return serialize_public() dicts directly \u2014 the translation from model to dict happens inside the service, which is appropriate single-location boundary translation.",
+        "app/eventyay/base/models/access_code.py: send_invite() performs a lazy import of QueuedMail inside the method to avoid circular imports \u2014 this is a seam smell indicating the model has outgrown its package boundary.",
+        "app/eventyay/base/payment.py imports from eventyay.presale.views (get_cart, get_cart_total, cart_session, get_or_create_cart_id) \u2014 a base-layer module depending on a view-layer module is an inverted boundary that forces view logic into base package tests.",
+        "app/eventyay/base/services/cart.py imports from eventyay.base.services.checkin._save_answers \u2014 private symbol crossing service boundary without a clean contract.",
+        "app/eventyay/presale/utils.py: _event_view wrapper and _detect_event integrate middleware (LocaleMiddleware(NotImplementedError)) with domain routing \u2014 LocaleMiddleware is instantiated with a NotImplementedError as its get_response argument (a sentinel hack rather than clean composition).",
+        "app/eventyay/base/services/orders.py imports from 20+ modules including models, services, signals, and API models (OAuthApplication) \u2014 a hub service with wide import fan-in.",
+        "app/eventyay/base/models/event.py imports from eventyay.talk_rules.event (can_change_event_settings, etc.) and eventyay.eventyay_common.video.permissions \u2014 model layer importing from business-rule and video-permission layers.",
+        "app/eventyay/control/views/orders.py imports vat_moss.id, a VAT computation library, directly in the view layer \u2014 VAT logic belongs in the service layer for testability.",
+        "app/eventyay/base/models/__init__.py re-exports 100+ symbols, making the model boundary extremely wide and all callers tightly coupled to its completeness.",
+        "app/eventyay/base/services/checkin.py: get_logic_environment() returns a Logic object populated locally \u2014 clean explicit output from the function with no hidden state.",
+        "app/eventyay/common/views/cache.py: conditional_cache_page delegates cleanly to etag_cache_page \u2014 good composition without back-and-forth.",
+        "app/eventyay/orga/views/review.py: ReviewDashboard inherits from both EventPermissionRequired and BaseSubmissionList, composing permission and query logic cleanly."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "authorization_consistency": {
+      "evidence": [
+        "app/eventyay/control/permissions.py: EventPermissionRequiredMixin, OrganizerPermissionRequiredMixin, AdministratorPermissionRequiredMixin are the three standard class-based-view protection mixins \u2014 a consistent pattern for the control panel.",
+        "app/eventyay/control/views/admin.py: AdminDashboard, AdminEventStartpageToggle, VoucherList, VoucherCreate, VoucherUpdate, VoucherDelete, SystemConfigView, UpdateCheckView all use AdministratorPermissionRequiredMixin consistently.",
+        "app/eventyay/control/views/admin.py: AttendeeListView (line 156) extends plain ListView \u2014 NO AdministratorPermissionRequiredMixin. The view contains manual authorization (if not self.request.user.has_active_staff_session(...)) rather than using the mixin. This is an inconsistency: sibling admin views use the mixin, AttendeeListView does not.",
+        "app/eventyay/control/views/admin.py: SubmissionListView (line ~270) also extends a base class without AdministratorPermissionRequiredMixin, using inline has_active_staff_session() check \u2014 same pattern as AttendeeListView.",
+        "app/eventyay/common/views/mixins.py: ActionFromUrl._check_permission() short-circuits to True when is_admin_mode_active(request) \u2014 admin mode bypass is present but no audit log is emitted at the bypass point.",
+        "app/eventyay/orga/views/review.py: ReviewDashboard uses EventPermissionRequired with permission_required = 'base.list_review' \u2014 string literal, not a constant.",
+        "app/eventyay/control/permissions.py: event_permission_required() supports a legacy 'can_change_settings' -> 'can_change_event_settings' mapping, and organizer_permission_required() has a similar 'can_change_settings' -> 'can_change_organizer_settings' shim \u2014 permission strings are magic literals without a shared constants module.",
+        "app/eventyay/base/models/access_code.py: rules_permissions uses can_change_event_settings for all operations (list, view, create, update, delete) \u2014 no differentiation between read and write permissions for access codes.",
+        "app/eventyay/control/views/admin.py: OrganizerList.get_queryset() at line 73 uses has_active_staff_session check inline rather than mixin \u2014 filtering happens in the queryset, not at the view dispatch level, so unauthorized users still reach the view handler.",
+        "app/eventyay/control/middleware.py: Global middleware enforces authentication for the control panel consistently (lines 157, 173) \u2014 a good global gate.",
+        "app/eventyay/common/views/mixins.py: PermissionRequired and EventPermissionRequired mixins from eventyay.common correctly use the rules library (rules.contrib.views.PermissionRequiredMixin) for the talk/orga side \u2014 separate from control panel's custom mixins, creating two authorization patterns in parallel.",
+        "app/eventyay/presale/utils.py: _detect_event() checks user_can_view_tickets and require_live at the middleware layer \u2014 consistent for presale paths."
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "ai_generated_debt": {
+      "evidence": [
+        "app/eventyay/base/plugins.py lines 59-102: three helper functions (plugin_group_key, plugin_sort_key, get_all_plugins_grouped) annotated '# from eventyay-talk' \u2014 comments explain provenance, not logic; minor restating tendency",
+        "app/eventyay/base/plugins.py line 31: docstring on get_all_plugins is adequate and adds value beyond the signature",
+        "app/eventyay/api/versions.py line 18: SERIALIZER_REGISTRY = {} module-level mutable dict with a clean decorator; minimal boilerplate",
+        "app/eventyay/api/pagination.py: PageNumberPagination subclass with a well-scoped TODO comment; comment is intentional (legacy API removal note), not a restatement",
+        "app/eventyay/base/signals.py lines 24-43: resolve_app_for_module has a docstring with Args/Returns blocks on a function whose purpose is only mildly non-obvious \u2014 mild docstring bloat; however the thread-safety note adds genuine insight",
+        "app/eventyay/orga/permissions.py: a 7-line file whose only body line is rules.add_perm; the comment '# Legacy for plugins. TODO remove after v2025.1.0' is signal-rich, not bloat",
+        "app/eventyay/base/services/chat.py: extract_mentioned_user_ids has a docstring explaining the regex approach; the function is short but the regex warrants explanation \u2014 acceptable",
+        "app/eventyay/api/views/event.py: _extract_bearer_token docstring ('Parse and validate\u2026Returns the raw token bytes on success. Raises AuthenticationFailed when the header is missing or malformed.') closely restates the function signature and exception list already visible in code \u2014 mild docstring echo",
+        "app/eventyay/base/services/orders.py: error_messages dict at module level uses gettext_lazy with meaningful domain terms \u2014 good",
+        "No evidence of entry/exit debug logging, full object dumps, or wholesale copied error-handling boilerplate across files",
+        "app/eventyay/base/plugins.py lines 108-115: PluginConfig.__init__ references 'PRETIX_IGNORE_CONFLICTS' env var and 'pretix plugin' \u2014 residual naming from legacy codebase rather than AI debt"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "incomplete_migration": {
+      "evidence": [
+        "app/eventyay/api/versions.py: LEGACY constant is still a SUPPORTED_VERSION; DEPRECATED_VERSIONS list contains LEGACY; comment '# TODO: track use of legacy versions, send/show warning (once) to user' \u2014 legacy API coexists with current v1 with no removal timeline",
+        "app/eventyay/api/pagination.py: PageNumberPagination has explicit comment 'TODO remove implementation details once the legacy API is getting removed' \u2014 compatibility shim for limit/offset still active alongside page-number pagination",
+        "app/eventyay/api/views/submission.py lines 32-43: dual import of LegacySubmission* serializers and current SubmissionSerializer; both used in the same view set; old-and-new API coexistence is explicit",
+        "app/eventyay/api/views/submission.py line 44: 'from eventyay.api.versions import LEGACY' used to branch behavior inside viewset actions",
+        "app/eventyay/api/serializers/legacy.py: entire legacy serializer file exists (LegacySubmissionSerializer, LegacySubmissionOrgaSerializer, LegacySubmissionReviewerSerializer) \u2014 no callers outside the single submission view, no stated removal target",
+        "app/eventyay/base/models/submission.py lines 1081-1108: SubmissionFavouriteDeprecated model still exists in production models, with its own serializer \u2014 a deprecated DB table with no evident removal plan",
+        "app/eventyay/orga/permissions.py: 'rules.add_perm(\"base.change_settings\", ...)' with comment '# Legacy for plugins. TODO remove after v2025.1.0' \u2014 version 2025.1.0 is past (today is 2026-03-15) and the permission shim is still present",
+        "app/eventyay/base/plugins.py line 18-28: PluginType enum marked 'THIS IS DEPRECATED, DO NOT USE ANY MORE' but still present and could still be imported by external plugins",
+        "app/eventyay/control/logdisplay.py line 321: backward-compatibility mapping from pretix.* and pretalx.* action types to eventyay.* \u2014 shim required because old log entries exist in DB, but no timeline for removal",
+        "app/eventyay/base/services/cancelevent.py lines 209,217: new eventyay code emits log actions with 'pretix.event.canceled' and 'pretix.event.product.changed' \u2014 actively generating data using the old namespace",
+        "app/eventyay/base/plugins.py line 113: 'PRETIX_IGNORE_CONFLICTS' env var checked in new PluginConfig \u2014 legacy env var name still active in new code path"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "package_organization": {
+      "evidence": [
+        "app/eventyay/base/models/ contains 60+ files: access_code.py, announcement.py, audit.py, auth.py, auth_token.py, availability.py, base.py, bbb.py, billing.py, cache.py, cfp.py, chat.py, checkin.py, choices.py, comment.py, devices.py, event.py, exhibitor.py, feedback.py, fields.py, giftcards.py, information.py, invoices.py, janus.py, log.py, mail.py, mixins.py, notifications.py, orders.py, organizer.py, page.py, poll.py, poster.py, product.py, profile.py, question.py, resource.py, review.py, room.py, roomquestion.py, roulette.py, schedule.py, seating.py, settings.py, slot.py, storage_model.py, stream_schedule.py, streaming.py, submission.py, systemlog.py, tag.py, tax.py, track.py, transaction.py, turn.py, type.py, vouchers.py, waitinglist.py, world.py \u2014 flat directory overload with mixed concerns spanning ticketing, conferencing, chat, video, and seating",
+        "app/eventyay/base/services/ contains 40 files: announcement.py, auth.py, bbb.py, cancelevent.py, cart.py, chat.py, checkin.py, cleanup.py, connections.py, event.py, exhibition.py, export.py, invoices.py, janus.py, locking.py, mail.py, notifications.py, orderimport.py, orders.py, poll.py, poster.py, pricing.py, question.py, quotas.py, reactions.py, room.py, roulette.py, seating.py, shredder.py, stats.py, tasks.py, teams.py, telemetry.py, tickets.py, turn.py, update_check.py, user.py, vouchers.py, waitinglist.py \u2014 40 service files in a single flat directory spanning fundamentally distinct domains",
+        "app/eventyay/ root: 27 subdirectories including agenda, api, base, cfp, common, config, control, core, event, eventyay_common, features, helpers, jinja-templates, locale, mail, multidomain, orga, person, plugins, presale, schedule, static, storage, submission \u2014 some directories name concerns clearly (api, presale, control) while others overlap (common vs core vs helpers vs eventyay_common)",
+        "app/eventyay/base/ itself spans: admin.py, auth.py, banlist.py, cache.py, channels.py, configurations/, context.py, decimal.py, email.py, exporter.py, exporters/, forms/, i18n.py, invoice.py, js_catalog_template.py, management/, metrics.py, middleware.py, migrations/, models/, notifications.py, orderimport.py, payment.py, pdf.py, plugins.py, reldate.py, secretgenerators/, secrets.py \u2014 'base' is semantically undefined and acts as a dumping ground for the entire ticketing+conferencing concern",
+        "app/eventyay/eventyay_common/ and app/eventyay/common/ both exist; their responsibilities overlap (views/account, views/organizer in eventyay_common; context_processors, exceptions, image, mail, text in common) \u2014 ambiguous boundary",
+        "app/eventyay/helpers/ contains: __init__.py, formats/ (locale format helpers), periodic.py, reportlab.py, stripe_utils.py \u2014 mixes generic utilities with stripe-specific payment code and reportlab PDF utilities",
+        "Coupling observation: base/services/ imports from base/models/ (correct direction), but also from api/models/ (e.g. base/services/orders.py imports OAuthApplication) \u2014 cross-boundary coupling from service layer to API layer",
+        "app/eventyay/core/ contains only utils/redis.py and utils/statsd.py \u2014 two files in a 'core' directory, very thin; likely a straggler that should merge into helpers/ or base/"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "initialization_coupling": {
+      "evidence": [
+        "app/eventyay/base/models/event.py line 84: TALK_HOSTNAME = settings.TALK_HOSTNAME \u2014 module-level constant computed from settings at import time; if settings.TALK_HOSTNAME changes (e.g., in tests via override_settings), all code referencing the cached TALK_HOSTNAME sees the stale value",
+        "app/eventyay/common/language.py lines 9-10: LANGUAGE_CODES_MAPPING and LANGUAGE_NAMES are module-level constants derived from settings.LANGUAGES_INFORMATION and global_settings.LANGUAGES at import time \u2014 same stale-snapshot risk in test overrides",
+        "app/eventyay/base/i18n.py line 73: ALLOWED_LANGUAGES = dict(settings.LANGUAGES) \u2014 module-level constant from settings; same pattern",
+        "app/eventyay/agenda/management/commands/export_schedule_html.py line 19: SERVER_NAME = settings.SITE_URL.split('://')[1] \u2014 module-level constant derived from settings.SITE_URL at import time, used in management command",
+        "app/eventyay/multidomain/views.py line 27 and app/eventyay/features/live/views.py line 27: VIDEO_DIST_DIR = cast(Path, settings.STATIC_ROOT) / 'video' \u2014 module-level Path derived from settings.STATIC_ROOT",
+        "app/eventyay/common/templatetags/vite.py line 18: MANIFEST_PATH = cast(Path, settings.STATIC_ROOT) / 'schedule-editor' / 'schedule-editor-manifest.json' \u2014 module-level path from settings",
+        "app/eventyay/api/webhooks.py lines 24, 59-71: _ALL_EVENTS = None global with a lazy-populate pattern via get_all_webhook_events(); this is a correct lazy singleton but creates implicit initialization ordering \u2014 if get_all_webhook_events() is called before all Django apps are ready, app_cache may be empty",
+        "app/eventyay/base/signals.py lines 14-21: app_cache = {} module-level mutable dict populated lazily by _populate_app_cache() after apps.check_apps_ready(); correct guard in place, but the global mutable dict is shared state that any test modifying app configs could pollute",
+        "app/eventyay/base/apps.py lines 29-32: module-level 'try: import eventyay.celery_app as celery' outside the AppConfig class \u2014 executes at Python import time, not at Django ready(); the ImportError is silenced, so failed celery imports are invisible",
+        "app/eventyay/eventyay_common/views/account/basic.py line 41: VALID_LANGUAGE_CODES = {code for code, __ in settings.LANGUAGES} \u2014 module-level set computed at import time from settings",
+        "app/eventyay/base/services/locking.py line 12: logger = logging.getLogger('pretix.base.locking') \u2014 uses old pretix namespace in logger name; minor but reveals residual coupling to legacy naming",
+        "app/eventyay/base/services/notifications.py line 24: _event, _at, notify_specific, notify_global = None, None, None, None \u2014 module-level mutable state for notification system; correct lazy init but all four variables must be initialized before any concurrent notification triggers"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": ""
+    },
+    "design_coherence": {
+      "evidence": [
+        "app/eventyay/base/models/submission.py: 1128 lines, single file containing SubmissionStates, SubmissionManager, DeletedSubmissionManager, AllSubmissionManager, SpeakerRole, and at least the full Submission model with methods covering state transitions, URL generation, scheduling, display, favourites, and a deprecated model \u2014 multiple distinct responsibility clusters in one file",
+        "app/eventyay/base/models/event.py: 80+ imports in header, contains Event model with settings, URL generation, schedule management, plugin activation, video permissions, and billing linkage \u2014 high coupling surface; the complexity is partly domain-inherent but the TALK_HOSTNAME import and VIDEO_PERMISSION_BY_FIELD suggest feature domains leaking into the core event model",
+        "app/eventyay/base/services/chat.py: 589 lines with async DB helpers, channel layer communication, mention extraction, and membership management \u2014 mixed IO concerns (DB + channel layer) in one service module",
+        "app/eventyay/api/views/event.py: imports from 12+ distinct modules at the top; contains EventFilter (filter logic), view classes for CRUD, video permission mapping, JWT handling, and webhook notification \u2014 multiple distinct responsibilities in one file",
+        "app/eventyay/control/views/__init__.py: PaginationMixin depends on 4 undeclared self attributes (DEFAULT_PAGINATION, get_paginate_by, paginate_by, request) \u2014 the mixin implicitly contracts with Django ListView internals without declaring that contract",
+        "Mechanical signal [coupling_design] for control/views/__init__.py fingerprint a0476933ab4e8f61: confirmed \u2014 PaginationMixin's implicit host contract creates real coupling risk when composed with non-ListView bases",
+        "app/eventyay/base/exporter.py: logger imported after other stdlib imports (line 7 logger statement after line 6 import io), minor ordering issue; also contains a silent except (pass/continue) flagged by mechanical scan",
+        "app/eventyay/api/webhooks.py: WebhookEvent base class has empty __init__ (no state), then ParametrizedOrderWebhookEvent and ParametrizedEventWebhookEvent both store _action_type and _verbose_name via their own __init__ \u2014 two parallel parameterized subclasses with identical structure suggest a single generic parameterized class would be cleaner",
+        "app/eventyay/base/models/checkin.py: high cyclomatic complexity flagged (>12 decision points) \u2014 mechanical signal confirmed by file size and CheckinList with complex rules JSONField processing logic",
+        "Mechanical signals for orphaned files: api/serializers/fields.py, api/serializers/product.py, api/serializers/question.py, api/serializers/rooms.py, api/serializers/stream_schedule.py, base/cache.py, base/models/auth_token.py, base/models/cache.py, base/models/transaction.py, base/plugins.py, base/secrets.py, base/services/announcement.py, base/services/cancelevent.py, base/services/locking.py, base/services/poll.py, base/services/poster.py, base/services/pricing.py \u2014 17 files flagged as orphaned (zero static importers). These may be loaded via dynamic imports, plugin discovery, or Django's ready() mechanism; confidence is medium that they are genuinely dead",
+        "app/eventyay/base/models/seating.py: 2x 'Too many optional params \u2014 consider a config object' flagged; the rubric says do NOT recommend config objects just for param count reduction, so this signal is a false positive",
+        "app/eventyay/api/serializers/fields.py: 72 LOC, zero importers per mechanical scan \u2014 genuinely appears orphaned; the ListMultipleChoiceField and UploadedFileField defined here would need to be used somewhere",
+        "app/eventyay/base/models/transaction.py: 29 LOC context manager rolledback_transaction \u2014 zero importers per mechanical scan; helpers/database.py contains rolledback_transaction (imported in invoices.py), suggesting a duplicate definition exists in two places",
+        "app/eventyay/base/services/invoices.py: 'Catch block that only logs (swallowed error)' \u2014 silent error swallowing at an invoice generation boundary is a meaningful design concern"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "medium",
+      "issues_preventing_higher_score": ""
+    },
+    "contract_coherence": {
+      "evidence": [
+        "BasePaymentProvider.form_authenticate and request_authenticate in base/auth.py use bare 'return' (implicit None) instead of 'return None', making the return contract ambiguous vs. returning a User",
+        "BasePaymentProvider.execute_payment (base/payment.py line 666) is documented as 'returns a URL string or None', annotated -> str | None, but the default implementation just returns None with no URL logic; subclass FreeOrderProvider.execute_payment (line 923) returns nothing (implicit None) rather than str|None explicitly",
+        "new_refund_control_form_render (payment.py line 845) annotated -> str | None but body just has bare 'return' (line 901), inconsistent with the str | None annotation",
+        "_cancel_order internal function (orders.py line 426) accepts order as int|Order, user as int|User, api_token as int|TeamAPIToken \u2014 parameter types diverge from annotation-free signature, the caller mark_order_refunded (line 248) passes order.pk (int) not an Order object, breaking the stated docstring contract",
+        "OrderChangeManager.open_payment (orders.py line 2302) is a property returning an Optional OrderPayment but has no type annotation; its docstring is absent",
+        "CompatibleCountryField.to_representation (api/serializers/order.py line 65) has no return on the else branch \u2014 can return None implicitly, violating the contract that the representation is always a string",
+        "mail() function (base/services/mail.py line 70) has no return type annotation despite being a primary public API; docstring says it 'raises SendMailException' on failure, but also returns None silently in the INVALID_ADDRESS fast-path",
+        "approve_order() and deny_order() (orders.py) both return order.pk (an int) but have no return type annotation; callers in API views treat the return value as an int, creating implicit contracts",
+        "BaseAuthBackend.form_authenticate / request_authenticate (base/auth.py lines 58-75) say 'return a User object or None' but implementations do bare 'return' (no value), which is not None explicitly \u2014 subtle violation",
+        "perform_checkin (services/checkin.py line 377) docstring says :param clist: 'The order position to check in' \u2014 same description as :param op, docstring copy-paste error misleads readers about the parameter"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A \u2014 score is below 85"
+    },
+    "logic_clarity": {
+      "evidence": [
+        "In base/services/orders.py extend_order: the inner 'change()' function is defined inside the outer function and called conditionally, but this is clean functional style and not dead code",
+        "presale/views/cart.py CartActionMixin.get_next_url(): the disclose_cart_id flag is computed with a compound boolean involving 'iframe' in GET and session cookie absence \u2014 logic is correct but complex",
+        "In base/services/cart.py _delete_out_of_timeframe() lines 253-278: returns err which could be None, the caller must check \u2014 no clear return type contract in the control flow; caller needs to compare with None implicitly",
+        "base/services/checkin.py get_logic_environment build_time function (lines 53-62): if t is not 'custom', 'date_from', 'date_to', or 'date_admission', the function returns None implicitly \u2014 no explicit return None and no error raised; this is a logic gap since callers expect a datetime",
+        "base/services/cart.py CartManager.get_last_warning() (line 210): a getter that returns self._last_warning which can be None \u2014 logic is clear but this is a low-value accessor wrapping a private attribute",
+        "base/services/orders.py reactivate_order lines 191-195: 'order_approved.send(...)' and 'if order.status == Order.STATUS_PAID: order_paid.send(...)' are called outside the transaction.atomic block which is inside the event.lock context \u2014 this is intentional but the logic path is non-obvious",
+        "base/payment.py is_allowed (line 511): the method calls get_or_create_cart_id(request) which has a side effect (creates a cart ID) inside a method that only reads data \u2014 getter that mutates state is a logic clarity concern",
+        "In base/services/cart.py _check_positions: err accumulation pattern uses 'err = err or error_messages[...]' throughout, which means the first error wins and later errors (even if more severe) are silently discarded \u2014 this is a logic correctness concern for callers expecting all errors",
+        "cfp/flow.py serialize_value (lines 69-76): falls through multiple getattr checks and finally returns str(value) as fallback \u2014 no explicit dead branches but the cascade is opaque",
+        "api/serializers/order.py: no async functions found, Django synchronous model \u2014 no async-without-await issue here"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A \u2014 score below 85"
+    },
+    "type_safety": {
+      "evidence": [
+        "Virtually all service functions in base/services/orders.py lack return type annotations: reactivate_order, extend_order, mark_order_refunded, mark_order_expired, approve_order, deny_order \u2014 these are primary public API functions",
+        "mail() in base/services/mail.py has parameter 'context: dict[str, Any] = None' \u2014 typed as dict but defaulted to None, so actual type is Optional[dict[str, Any]]; this mismatch is repeated for event, locale, order, position, etc.",
+        "base/services/cart.py CartManager.__init__ declares invoice_address: InvoiceAddress = None \u2014 same Optional mismatch pattern",
+        "Order.STATUS_REFUNDED = 'c' (orders.py line 161) is marked '# deprecated' and is identical to STATUS_CANCELED; code using raw string 'c' for status comparison bypasses the enum-style constants",
+        "base/services/orders.py _check_positions signature: positions: list[CartPosition] but can also receive a QuerySet (annotated with requires_seat) from _perform_order \u2014 runtime type diverges from annotation",
+        "base/payment.py settings_form_fields -> dict should arguably be -> OrderedDict since the docstring and usage both use OrderedDict; the weaker dict annotation is misleading",
+        "OrderChangeManager._cancel_open_payment_if_present, _check_paid_price_change, _check_quotas etc. \u2014 all critical internal methods have no return type annotations",
+        "base/models/orders.py imports 'from typing import Any, Dict, List, Union' but the file primarily uses unparameterized types (e.g., 'dict', 'list') in practice \u2014 the imports are present but underused",
+        "api/serializers/order.py CountryField.to_internal_value returns {self.field_name: Country(data)} \u2014 a dict, but no return annotation; to_representation returns str|None with no annotation",
+        "base/auth.py BaseAuthBackend.login_form_fields -> dict but implementations and callers treat it as OrderedDict consistently \u2014 annotation is too loose"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A \u2014 score below 85"
+    },
+    "test_strategy": {
+      "evidence": [
+        "stable/test_api.py contains only 7 trivial tests that check HTTP status codes (401/403/404) and nothing else \u2014 no real API behavior tested for the stable/presale subsystem",
+        "stable/test_api.py uses 'assert response.status_code in [401, 403, 404]' and 'assert response.status_code in [200, 404]' \u2014 acceptance windows so wide they would pass on broken endpoints",
+        "The talk/ subdirectory has a much richer test suite (orga views, API, schedule, CFP, submissions) \u2014 this reflects a split history where one half of the app is well-tested and the other (stable) is barely tested",
+        "No test files found for: base/services/orders.py (core order processing), base/services/cart.py (cart management), base/payment.py (payment providers), base/services/mail.py \u2014 these are the highest-risk business logic files",
+        "base/services/checkin.py has no dedicated test file in the stable/ tree; the checkin logic (rules engine, JSONLogic) is complex but untested at the unit level in this codebase",
+        "conftest.py for stable tests creates organizer, event, and authenticated_client fixtures \u2014 minimal setup for meaningful integration testing",
+        "talk/tests/ has 90+ test files organized by module (api, cfp, orga, schedule) \u2014 solid test organization for the talk subsystem",
+        "No snapshot tests found \u2014 good; the project avoids snapshot test overuse",
+        "talk/conftest.py sets up comprehensive fixtures including submission, speaker, schedule, event \u2014 these support real integration tests",
+        "stable/test_control.py and stable/test_presale.py and stable/test_common.py exist but appear similarly thin (not read in full but based on file naming and the pattern of stable/test_api.py)"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A \u2014 score below 85"
+    },
+    "api_surface_coherence": {
+      "evidence": [
+        "REST API viewsets (OrderViewSet, CheckinListViewSet, SpeakerViewSet, WebHookViewSet, OrganizerViewSet) follow a consistent DRF ModelViewSet pattern with uniform permission and queryset patterns",
+        "SpeakerViewSet uses PretalxViewSetMixin which handles versioned serializers, while OrderViewSet does not \u2014 inconsistent API versioning approach between modules",
+        "WebHookViewSet.perform_update() returns inst (line 39) while DRF's standard perform_update() returns None \u2014 inconsistent return contract within the API layer",
+        "BasePaymentProvider public API has 20+ hook methods, all synchronous, which is consistent but creates a very large interface surface",
+        "perform_checkin has 10 parameters (op, clist, given_answers, force, ignore_unpaid, nonce, datetime, questions_supported, user, auth, canceled_supported, type) \u2014 12 total including self-equivalent \u2014 exceeds the 5-parameter guideline for public APIs",
+        "mail() function has 17 parameters \u2014 far exceeds the 5-parameter API boundary guideline; the function does too many things (compose, filter, attach tickets, attach ical, attach cached files, attach invoices, sync/async mode)",
+        "_create_order has 9 parameters with similar overloading concerns",
+        "Mixed sync/async: base/services/user.py get_blocked_users is async (decorated @database_sync_to_async) while set_user_banned, delete_user, block_user are also async \u2014 but they are called alongside synchronous order service functions without clear boundary documentation",
+        "The stable API (api/views/order.py OrderViewSet) and talk API (api/views/speaker.py SpeakerViewSet) use different base mixin patterns (pure DRF vs PretalxViewSetMixin), creating two divergent API surface styles in the same codebase",
+        "Error contracts: API viewsets raise DRF exceptions (PermissionDenied, NotFound, ValidationError) consistently; service layer raises OrderError, CartError, CheckInError \u2014 the boundary translation is done in views but not documented"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor",
+      "confidence": "high",
+      "issues_preventing_higher_score": "N/A \u2014 score below 85"
+    }
+  },
+  "dimension_judgment": {
+    "cross_module_architecture": {
+      "strengths": [
+        "django_scopes.scope() is used consistently in middleware and key service paths, enforcing the multi-tenancy boundary at the right layer",
+        "Plugin signal dispatch (EventPluginSignal) correctly encapsulates plugin lifecycle checks in base/signals.py rather than scattering them across views",
+        "API views import from base models cleanly via the public base/models/__init__.py surface, not directly from model submodules"
+      ],
+      "issue_character": "The primary architectural issue is a repeated upward dependency from base model/mixin code into API-layer modules (serializers, webhooks, auth), handled via function-level imports as a band-aid for circular imports, rather than extracting a shared coordination layer.",
+      "score_rationale": "The codebase has a recognizable layered structure (base models \u2192 services \u2192 API \u2192 views) but it is systematically violated by base/models depending on eventyay.api via deferred imports. This is not an isolated case: it appears in LogMixin, LoggingMixin, base.py, room.py, devices.py, shredder.py, and configurations. The dual LogMixin/LoggingMixin implementations and duplicate default_roles() function further indicate missing shared abstractions. The stale pretix.* docstring namespace references signal documentation drift from runtime reality. These are systemic, codebase-wide concerns that a new engineer would struggle to explain from the layer diagram alone, warranting a score well below the 65 mid-range anchor."
+    },
+    "high_level_elegance": {
+      "strengths": [
+        "The top-level module names (api, control, presale, cfp, orga, agenda, schedule, plugins) are broadly aligned with major domain capabilities, making initial orientation possible",
+        "The plugin system is clearly delineated in eventyay/plugins/ with each plugin as its own sub-package",
+        "base/models/mixins.py provides a coherent set of composable abstractions (TimestampedModel, LogMixin, FileCleanupMixin, PretalxModel, GenerateCode, OrderedModel) that are reused across models"
+      ],
+      "issue_character": "The core issue is that base/ has become an unbounded catch-all that merges three distinct product domains (ticketing, conference scheduling, video/AV) into one model namespace and one 100-symbol __init__.py, making ownership and change boundaries invisible to new engineers.",
+      "score_rationale": "The high-level package naming is adequate, but decomposition inside base/ does not localize change: modifying a video-infrastructure model and a ticketing model both touch the same __init__.py hub and the same test imports. The presence of world.py, bbb.py, janus.py, and chat.py alongside orders.py and invoices.py in a single models/ directory, combined with the stale pretixcontrol template references and the redundant eventyay_common naming, places this below the 65-point midrange anchor. It is not as low as a fully undifferentiated codebase, but the structural confusion from the three-product merger is still very visible."
+    },
+    "convention_outlier": {
+      "strengths": [
+        "Python naming conventions (snake_case functions/variables, PascalCase classes) are respected throughout the codebase with no mixing",
+        "The DRF ModelViewSet pattern is used consistently across the api/views/ layer for most resources",
+        "Model mixin composition (TimestampedModel, LogMixin, FileCleanupMixin combined into PretalxModel) follows a consistent documented pattern for most models"
+      ],
+      "issue_character": "Convention drift is concentrated in three areas: timestamp field naming (three different conventions across sibling model files), the function-based view outlier in api/views/stripe.py against the DRF viewset norm, and asymmetric directory granularity between control/forms/ flat and control/forms/organizer_forms/ sub-package.",
+      "score_rationale": "The codebase scores moderately on convention consistency: naming is clean at the identifier level, but structural conventions are inconsistent \u2014 the same directory nesting principle is applied unevenly (40+ flat models vs. 6-file sub-packages in forms), and the timestamp naming inconsistency is directly observable within the same models/ folder. The function-based view outlier in api/views/stripe.py is a clear style island. These are real navigation impediments for new engineers, pushing the score meaningfully below the midrange anchor of 65."
+    },
+    "error_consistency": {
+      "strengths": [
+        "I/O boundary handlers (stripe webhook, starred-ICS token, DRF viewsets) use specific exception types appropriately",
+        "FileCleanupMixin.save() does use try/except to isolate the pre-save DB read from the actual save path \u2014 the intent is correct even if the scope is too broad",
+        "IntegrityError is handled specifically in GenerateCode.save() with a retry loop \u2014 shows awareness of specific failure modes"
+      ],
+      "issue_character": "Error handling is inconsistent in both direction (some code swallows silently, some propagates, some uses generic Exception) and granularity (specific exception types at API boundaries but bare except/suppress(Exception) in core model mixins), with a documented violation of the agents.md rule against generic Exception raises.",
+      "score_rationale": "The codebase has clearly designed error handling in view/API layers but exhibits systemic error swallowing and generic catches in the model and mixin layers, which are exactly the paths where predictable failure modes matter most. The explicit TODO acknowledging a generic Exception raise in organizer.py, the bare except in LargeResultSetPage, and the suppress(Exception) in file cleanup collectively show the issue is pattern-level, not isolated. With 338 smell findings from the detector and several confirmed broad-catch violations in high-traffic code paths, this scores substantially below the midrange anchor."
+    },
+    "naming_quality": {
+      "strengths": [
+        "Domain model names (Order, Invoice, Submission, Review, TalkSlot, CheckinList) are precise and match domain vocabulary",
+        "Signal names in base/signals.py are consistent verb_noun patterns (order_placed, checkin_created, validate_cart) that clearly communicate event semantics",
+        "View and mixin class names are action-oriented and self-describing (ShredDownloadView, StartShredView, GlobalSettingsView, ScheduleMixin)"
+      ],
+      "issue_character": "Naming issues are isolated to a small number of generic verbs and ambiguous abbreviations rather than systemic problems; the most significant finding is process_image() in FileCleanupMixin which uses a generic verb, and the pw abbreviation in BBBCall which is inconsistent with the codebase's preference for full words.",
+      "score_rationale": "The codebase demonstrates generally good naming discipline at the domain model and signal level. Issues are concentrated in a few utility helpers (process_image, _get_attribute) and the BBBCall model fields (pw, rooms_only). The SENSITIVE_KEYS constant being redefined inline as 'sensitive_keys' is a minor inconsistency. None of these are severe enough to drop below the midrange anchor \u2014 the codebase earns a mid-65 score, reflecting adequate naming with identifiable but limited outliers."
+    },
+    "abstraction_fitness": {
+      "strengths": [
+        "Domain services (orders, checkin, cart, mail) are substantive \u2014 they contain real logic rather than being pass-through wrappers.",
+        "build_public_schedule_exporters() in agenda/views/utils.py is a well-scoped function that centralizes exporter discovery and serialization for two UIs.",
+        "BasePaymentProvider is a legitimate extension point used by multiple payment plugins, justifying its abstract surface.",
+        "The common/views/mixins.py mixin hierarchy (ActionFromUrl, Sortable) correctly factors shared behavior without redundant delegation.",
+        "conditional_cache_page in common/views/cache.py is a value-add wrapper that adds ETag logic on top of Django's cache_page \u2014 not a mere forwarder."
+      ],
+      "issue_character": "The primary pattern is proliferation of flat utils.py catch-all modules across every subsystem, combined with thin service wrappers and argument-forwarding helpers that add a hop without adding policy.",
+      "score_rationale": "The codebase earns a mid-range score because core service modules (orders, cart, mail) have genuine logic and the major abstractions (BasePaymentProvider, view mixins) are justified. However, the utils.py proliferation across 6+ packages, the parse_ics_token one-liner, the deprecated noop event_view wrapper, and the BaseAuthBackend with all-None defaults show systematic indirection creep. The reversed dependency from base.payment into presale.views is a cross-layer coupling that indicates a missing bounded package. Relative to a well-structured Django codebase these issues are moderate \u2014 not pervasive enough to warrant a very low score, but too frequent to score above 70."
+    },
+    "dependency_health": {
+      "strengths": [
+        "Core framework dependencies (Django, DRF, Celery, Channels) are sensibly organized and on recent versions.",
+        "Dev dependencies are cleanly separated into [dependency-groups] dev section.",
+        "External payment plugins are isolated as separate packages, keeping payment logic out of the core dependency graph.",
+        "The comment about vat-moss-forked blocking Python 3.13 shows the team is aware of the constraint and has documented it."
+      ],
+      "issue_character": "The dominant issue is dependency surface bloat: multiple libraries serving the same purpose (bleach+nh3, orjson+json, pyjwt+jwcrypto, pdf2image+pdfrw+reportlab, requests+aiohttp) combined with heavy analytics dependencies (pandas, matplotlib) and four upstream-pinned-to-@main external plugins.",
+      "score_rationale": "The codebase carries substantial dependency health risk. The bleach/nh3 dual HTML sanitizer and the active version conflict blocking Python 3.13 are the most concrete defects. The four @main-pinned plugins create silent breakage risk on every pip install. The 190+ flat dependency list with no upper bounds makes auditing difficult. This is materially worse than a healthy project, which would have consolidated sanitizers, explicit commit hashes for git-sourced deps, and a single JSON serializer policy, warranting a score in the low-50s range."
+    },
+    "low_level_elegance": {
+      "strengths": [
+        "get_logic_environment() in base/services/checkin.py correctly scopes closures and names them clearly.",
+        "build_public_schedule_exporters() in agenda/views/utils.py is intention-revealing with a clear pipeline: discover -> filter -> sort -> serialize.",
+        "conditional_cache_page() wrapper in common/views/cache.py cleanly separates the condition check from the cache delegation.",
+        "load_starred_ics_token() in agenda/views/utils.py has precise exception handling (explicit exception tuple) and a clear success/failure return contract.",
+        "LazyRuleVars class structure in base/services/checkin.py uses cached_property appropriately to avoid redundant ORM calls."
+      ],
+      "issue_character": "The primary low-level issue is oversized functions that interleave multiple responsibilities (detect+authorize+dispatch in _detect_event, get content+mutate+render in get_schedule_exporter_content) combined with ad-hoc state mutation on external objects rather than explicit parameter passing.",
+      "score_rationale": "Smaller, well-scoped functions in the codebase are clean and direct. The damage comes from several key large functions that exceed their stated scope: _detect_event() at 155 lines handles domain routing, locale, live check, ticket permissions, plugin checks, and signals; get_schedule_exporter_content() mutates exporter state rather than passing parameters; the etag_cache_page() ETag comparison is scattered. These are not trivial style issues \u2014 they create cognitive overhead when debugging and testing. A healthy codebase at this scale would decompose _detect_event into 3-4 composable helpers. The score of 60 reflects genuinely clean leaf-level code offset by problematic monoliths in key execution paths."
+    },
+    "mid_level_elegance": {
+      "strengths": [
+        "Announcement service translates to dict at the boundary (serialize_public) in a single, obvious place.",
+        "get_logic_environment() returns an explicit Logic object \u2014 no hidden state mutation across the service boundary.",
+        "conditional_cache_page -> etag_cache_page is a clean one-direction delegation with explicit parameters.",
+        "EventPermissionRequiredMixin and EventPermissionMiddleware both centralize auth enforcement at the boundary rather than scattering it in handlers.",
+        "BaseSubmissionList / ReviewDashboard mixin composition is coherent \u2014 each mixin owns a distinct concern."
+      ],
+      "issue_character": "The dominant pattern is layer boundary violations: base.payment importing presale.views, event model importing business-rule and video permission layers, and a 20+ import hub in services/orders.py that makes the service layer's seam unclear.",
+      "score_rationale": "The codebase shows genuine effort at service-layer decomposition (announcement, checkin, cart, orders as separate services), but the boundary integrity is repeatedly violated by upward imports (base -> presale, model -> business-rule layer) and a lazy-import hack in access_code.py that signals an unresolved circular dependency. The services/orders.py import fan-in (20+ modules including API models) creates a hub that makes the service-layer seam difficult to test or extend. These are mid-level seam problems \u2014 not naming or internal implementation issues \u2014 and they affect a significant fraction of core paths, warranting a score in the upper-50s."
+    },
+    "authorization_consistency": {
+      "strengths": [
+        "Control panel admin views consistently use AdministratorPermissionRequiredMixin for the majority of views.",
+        "Global middleware in control/middleware.py provides a consistent authentication gate for all control panel routes.",
+        "The presale layer enforces live-event and ticket-visibility checks centrally in _detect_event() rather than per-view.",
+        "The talk/orga side uses the rules library (rules.contrib.views.PermissionRequiredMixin) consistently through EventPermissionRequired and PermissionRequired.",
+        "Legacy permission string shims (can_change_settings) are explicitly documented in the permission decorators."
+      ],
+      "issue_character": "The dominant pattern is inconsistent mixin application on admin views (AttendeeListView, SubmissionListView bypass AdministratorPermissionRequiredMixin and use inline queryset filtering instead), combined with permission strings as magic literals and two parallel authorization systems (custom control panel mixins vs. rules library for orga).",
+      "score_rationale": "The codebase has a recognizable authorization strategy \u2014 middleware gates, permission mixins, rules library \u2014 but enforcement is not uniformly applied. Two sibling admin views in admin.py lack the AdministratorPermissionRequiredMixin that protects their siblings, relying instead on queryset-level filtering that still allows the view to dispatch. The magic permission string literals ('base.list_review', 'can_change_settings') and the two-pattern approach (custom EventPermissionRequiredMixin for control, rules library for orga) create inconsistency that increases review burden. The admin-mode bypass in ActionFromUrl lacks audit logging. These are concrete, auditable gaps \u2014 not theoretical risks \u2014 placing the score in the upper-50s range."
+    },
+    "ai_generated_debt": {
+      "strengths": [
+        "Domain-specific naming is used throughout: OrderChangeManager, QuotaAvailability, LockTimeoutException \u2014 no generic handleData/processItem anti-patterns found",
+        "Error messages use domain vocabulary and lazy translation, not copy-pasted boilerplate",
+        "Pagination, locking, and serializer code are meaningfully layered \u2014 wrappers add auth, scoping, or version negotiation, not pure pass-throughs",
+        "Signal infrastructure uses named types (DeprecatedSignal, ChainedSignal) rather than generic wrappers",
+        "TODO comments are targeted ('remove after v2025.1.0', 'remove once legacy API is removed') rather than vague placeholders"
+      ],
+      "issue_character": "Occasional mild docstring echo on boundary functions (e.g., _extract_bearer_token) and comment provenance labels ('# from eventyay-talk') that add noise without insight, but no systemic AI-hallmark patterns.",
+      "score_rationale": "The codebase shows strong domain naming, purposeful wrappers, and targeted TODOs \u2014 all hallmarks of human-authored, domain-aware code. The few mild issues (docstring echo on one API helper, source attribution comments in plugins.py) are cosmetic and local. No systemic LLM hallmark patterns such as entry/exit logging, object dumps, or boilerplate error handling across files were found. Score sits in the 70-75 range: clearly above average but with a handful of fixable cosmetic issues."
+    },
+    "incomplete_migration": {
+      "strengths": [
+        "The legacy API is explicitly versioned and isolated behind a LEGACY constant, not silently present",
+        "The compatibility shim in pagination.py is commented with a TODO pointing to removal condition",
+        "logdisplay.py backward-compatibility mapping is documented as serving historic DB entries, not new code"
+      ],
+      "issue_character": "The migration from pretix/pretalx namespaces to eventyay is structurally incomplete: deprecated symbols are still called by active production code paths, a past-due permission alias remains, and the legacy API coexists without a removal deadline.",
+      "score_rationale": "Multiple distinct incomplete migrations are present simultaneously: the LEGACY API version is still supported with no removal target, SubmissionFavouriteDeprecated exists as an active production model past its useful life, new code actively logs events under the pretix.* namespace, and a 'remove after v2025.1.0' shim survived well past that version. The breadth of simultaneous stale coexistences across API versioning, model layer, log namespacing, and permission registration drives the score well below the midpoint."
+    },
+    "package_organization": {
+      "strengths": [
+        "Top-level domain separation (api, control, presale, agenda, orga) is conceptually sound and matches Django app boundaries",
+        "migrations/ directories are correctly isolated from production code",
+        "The plugins/ subdirectory cleanly groups optional extension code",
+        "Dedicated features/ directory for live/social/analytics separates optional feature flags from core"
+      ],
+      "issue_character": "The base/ package acts as an undifferentiated monolith containing 60+ models, 40+ services, and cross-cutting helpers with no internal grouping by domain, causing high cognitive overhead and difficult ownership assignment.",
+      "score_rationale": "The outer Django-app structure is reasonable but the internal layout of base/ is severely overloaded: 60+ model files and 40+ service files in flat directories spanning ticketing, conferencing, video, seating, and chat represent a flat directory overload that the rubric flags. Additionally, common/ and eventyay_common/ have ambiguous, overlapping boundaries, and core/ holds only 2 utility files. The codebase is significantly above trivial size (>200 production files) so flatness is not justified by scale. Score reflects many confirmed overload signals partially offset by coherent outer app boundaries."
+    },
+    "initialization_coupling": {
+      "strengths": [
+        "Django AppConfig.ready() is used in base/apps.py to defer most signal registrations to after apps are ready",
+        "app_cache in base/signals.py uses apps.check_apps_ready() guard before population",
+        "Celery import in base/apps.py uses try/except to avoid hard dependency on celery at import time",
+        "_ALL_EVENTS lazy global in webhooks.py is correctly initialized to None and populated on first call, avoiding eager side effects"
+      ],
+      "issue_character": "The dominant issue is a repeated pattern of module-level constants computed from settings at import time (TALK_HOSTNAME, ALLOWED_LANGUAGES, VIDEO_DIST_DIR, MANIFEST_PATH, SERVER_NAME, VALID_LANGUAGE_CODES), creating stale-snapshot risks in test environments and any runtime that changes settings after initial import.",
+      "score_rationale": "The codebase correctly uses Django's AppConfig.ready() for signal registration and guards lazy globals with readiness checks \u2014 both strong practices. However, at least 7 distinct module-level constants are computed directly from Django settings at import time rather than being accessed dynamically, creating known fragility for test isolation and settings overrides. The module-level Celery import outside AppConfig in base/apps.py silently swallows ImportError at import time, which is an initialization side-effect risk. Score of 58 reflects solid Django idiom adherence partially offset by widespread settings-snapshot coupling."
+    },
+    "design_coherence": {
+      "strengths": [
+        "Service layer is clearly separated from model layer and view layer \u2014 dependencies flow correctly in most cases",
+        "State machine logic in SubmissionStates uses declarative valid_next_states dict rather than scattered conditionals",
+        "Mixins in control/views/__init__.py correctly use super() chaining for composability",
+        "Async service functions (announcement.py, poll.py, poster.py) consistently use @database_sync_to_async uniformly"
+      ],
+      "issue_character": "The dominant design issues are file-level responsibility accumulation (submission.py at 1128 lines, event.py with 80+ imports, chat.py at 589 lines) and a large cluster of apparently orphaned files that either represent dead code or indicate the static analysis cannot reach their callers.",
+      "score_rationale": "The codebase has sound directional design (service/model/view separation, state machines as data, consistent async patterns) but suffers from responsibility accumulation in key files (submission.py, event.py, chat service) and a large population of mechanically-flagged orphaned files that at minimum indicate navigation friction and at worst represent genuinely dead code. The implicit host contract in PaginationMixin and duplicate rolledback_transaction definition are confirmed structural defects. Score of 55 reflects real design coherence at the pattern level undermined by concentrated complexity and unresolved orphan debt."
+    },
+    "contract_coherence": {
+      "strengths": [
+        "BasePaymentProvider defines a thorough plugin contract with well-documented docstrings on every hook method",
+        "Order service functions (approve_order, deny_order, cancel_order) consistently raise OrderError on invalid states rather than silently returning",
+        "perform_checkin has a solid explicit docstring listing all parameters and expected behavior",
+        "Model methods like Order.gracefully_delete use isinstance guards before accepting int/object polymorphism, making the duck-typed contract visible"
+      ],
+      "issue_character": "The dominant pattern is annotation lies and implicit-None return paths: functions declare a return type (or imply one by docstring) but some code paths return bare None or use bare 'return', and several key service functions accept polymorphic int|Model parameters with no type annotation at all.",
+      "score_rationale": "The codebase has a coherent plugin-framework contract in BasePaymentProvider and stable OrderError exception contracts, which are meaningful strengths. However, multiple high-traffic surfaces (execute_payment, form_authenticate, CompatibleCountryField.to_representation, mail()) have annotation lies or missing return type contracts, and at least one docstring literally duplicates its description across two parameters. At the mid-range, this puts the score around 54 \u2014 better than code with no contracts at all, but below the threshold expected of production-quality Python where public APIs are consistently annotated and documented."
+    },
+    "logic_clarity": {
+      "strengths": [
+        "Cart validation _check_positions() uses a clear accumulate-and-raise pattern with `err = err or ...` that is consistent across the function",
+        "perform_checkin has explicit guard clauses with clear error codes ('canceled', 'unpaid', 'product', 'rules') rather than naked booleans",
+        "Order service functions (approve_order, deny_order) have straightforward linear logic with no duplicate branches",
+        "The OrderChangeManager uses namedtuple operations which provide clear, self-documenting logic"
+      ],
+      "issue_character": "The dominant issue pattern is silent fallthrough in functions that should either raise or return an explicit value \u2014 particularly in checkin rule logic and cart validation where missing branches return None where callers expect a datetime or error string.",
+      "score_rationale": "The codebase's core order/cart flows have clean linear control flow and consistent guard patterns, placing it above the median. However, several key utility functions (build_time in checkin logic, cart timeframe deletion) have implicit None returns where a ValueError or explicit return would clarify the contract. The is_allowed method creating cart IDs as a side effect is a subtle logic clarity issue. These are real developer traps but not pervasive, warranting a score around 62 \u2014 functional but with scattered ambiguity."
+    },
+    "type_safety": {
+      "strengths": [
+        "base/services/cart.py imports List, Optional from typing and uses them on a few internal helpers",
+        "base/services/pricing.py and checkin.py have function-level return annotations on some helpers",
+        "WalletType enum (payment.py) is defined and used via .value lookups rather than raw string literals"
+      ],
+      "issue_character": "The dominant pattern is Optional mismatch: parameters typed as X but defaulted to None throughout service layers, meaning the declared type is always wrong. This is compounded by total absence of return type annotations on public service functions that are called throughout the API layer.",
+      "score_rationale": "This codebase has essentially no systematic type annotation discipline on its core service layer. The most-called public functions (mail, approve_order, deny_order, mark_order_expired) have no return type annotations, and multiple parameters throughout have the Optional mismatch anti-pattern (typed X, defaults to None). Even where typing imports exist, they are inconsistently applied. By the global anchor of 'annotations missing on essentially all public APIs' = low-30s, and with some partial annotation on helpers, a score of 35 is appropriate \u2014 the codebase would fail a mypy strict run on nearly every service module."
+    },
+    "test_strategy": {
+      "strengths": [
+        "The talk/ subsystem has a well-organized, comprehensive test suite covering API, views, models, services, and schedule logic",
+        "No snapshot test overuse detected \u2014 tests focus on behavior assertions",
+        "Test fixtures in talk/conftest.py are well-structured and support realistic integration scenarios",
+        "Some cross-module testing exists in talk/ (e.g., test_cfp_flow.py, test_schedule_model.py test real workflows)"
+      ],
+      "issue_character": "The critical business-logic layer (order processing, cart management, payment providers, check-in) has near-zero dedicated test coverage in the stable/ subsystem, while the test files that do exist use acceptance windows so wide they verify almost nothing.",
+      "score_rationale": "The talk subsystem is reasonably well tested, which prevents a lower score. However, the stable subsystem's core \u2014 order placement, cart validation, payment execution, email delivery \u2014 has no unit or integration tests. stable/test_api.py's 'status_code in [401, 403, 404]' assertions would pass even if the server returns 500. This two-tier test quality, where the most financially critical paths are untested, places the overall score around 42 \u2014 below average for a production ticketing system."
+    },
+    "api_surface_coherence": {
+      "strengths": [
+        "REST API viewsets consistently use DRF conventions (ModelViewSet, permission attributes, serializer_class)",
+        "Service-layer exceptions (OrderError, CartError, CheckInError) are consistently raised rather than returning None on failure",
+        "Payment provider plugin interface (BasePaymentProvider) has a coherent, well-documented set of hooks despite its size",
+        "checkin.perform_checkin has a clear single responsibility \u2014 check in one position against one list"
+      ],
+      "issue_character": "The dominant issue is parameter overload: multiple public API functions accept 10+ parameters which are partly overlapping (user/auth/device patterns in order services) and partly doing multiple jobs (mail() attaching tickets, ical, invoices, cached files, or sending sync vs async in one function).",
+      "score_rationale": "The REST API layer is reasonably coherent \u2014 DRF conventions are followed and errors are translated consistently at view boundaries. The major drag is at the service layer public API where parameter counts routinely exceed 10 (mail has 17, perform_checkin has 12, _create_order has 9), with overloaded responsibilities and divergent base mixins between the stable and talk API subsystems. This level of parameter overload and cross-subsystem inconsistency puts the score at 55 \u2014 workable for developers who already know the codebase, but a significant onboarding and maintenance burden."
+    }
+  },
+  "issues": [
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-001",
+      "summary": "base/models/mixins.py and base/models/base.py both import from eventyay.api (models, webhooks) inside log_action(), inverting layer dependency",
+      "confidence": "high",
+      "suggestion": "Extract a thin LoggingCoordinator protocol or use Django signals (already available in the project) to decouple the model layer from API auth types; pass auth as a pre-resolved string/enum rather than an OAuthAccessToken instance",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "mixins.py line 51-52: `from eventyay.api.models import OAuthAccessToken, OAuthApplication` and `from eventyay.api.webhooks import notify_webhooks` inside log_action()",
+        "base.py lines 64-65 repeat identical imports",
+        "This creates a cycle: base models -> api models -> base models"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-002",
+      "summary": "Duplicate LogMixin and LoggingMixin implement nearly identical log_action() without differentiation or consolidation",
+      "confidence": "high",
+      "suggestion": "Consolidate into a single implementation; if behavioral differences exist (LoggedModel's link-building vs. PretalxModel's prefix handling), document the split explicitly or use composition",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py"
+      ],
+      "evidence": [
+        "mixins.py defines class LogMixin with log_action()",
+        "base.py defines class LoggingMixin with log_action() \u2014 nearly identical bodies",
+        "Both are exported from base/models/__init__.py"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-003",
+      "summary": "base/models/room.py imports API serializer (I18nAwareModelSerializer), inverting model-to-API dependency",
+      "confidence": "high",
+      "suggestion": "Move I18nAwareModelSerializer to a shared helpers or common layer that both base and api can import from without creating a cycle",
+      "related_files": [
+        "app/eventyay/base/models/room.py"
+      ],
+      "evidence": [
+        "room.py: `from eventyay.api.serializers.i18n import I18nAwareModelSerializer` \u2014 a model module importing from API serializers"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-004",
+      "summary": "default_roles() function duplicated in both base/models/event.py and base/models/world.py",
+      "confidence": "high",
+      "suggestion": "Extract default_roles() to a shared location (e.g., eventyay.core.permissions or a roles module) and import it from both models",
+      "related_files": [
+        "app/eventyay/base/models/event.py",
+        "app/eventyay/base/models/world.py"
+      ],
+      "evidence": [
+        "event.py line 96: `def default_roles():`",
+        "world.py line 33: `def default_roles():` \u2014 same function name, same purpose (building permission role dicts from Permission enum)"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-005",
+      "summary": "base/signals.py docstrings contain stale pretix.* namespace references throughout, drifting from eventyay.* runtime reality",
+      "confidence": "high",
+      "suggestion": "Do a targeted find-and-replace of pretix.* references in signal docstrings to eventyay.* equivalents",
+      "related_files": [
+        "app/eventyay/base/signals.py"
+      ],
+      "evidence": [
+        "Line 131: 'sender is required to be an instance of `pretix.base.models.Event`'",
+        "Lines 263, 271, 279, 287, 295, 303, 311, 319, 330, 337, 347: signal docstrings reference pretix.base.* subclass paths",
+        "Lines 516, 529, 557: logentry_display, logentry_object_link, requiredaction_display reference pretix.base.signals.*"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "cross_module_architecture",
+      "identifier": "arch-006",
+      "summary": "control/views/__init__.py re-exports ~30 admin views 'for backward compatibility' without documented active consumers",
+      "confidence": "medium",
+      "suggestion": "Audit whether any external code actually imports from eventyay.control.views directly; if not, remove the shim and let callers import from control.views.admin_views",
+      "related_files": [
+        "app/eventyay/control/views/__init__.py"
+      ],
+      "evidence": [
+        "__init__.py lines 186-268 import and re-export all views from admin_views.py 'to maintain backward compatibility'",
+        "No external plugin or test is cited as requiring this shim"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-001",
+      "summary": "base/models/ mixes ticketing, conference-talk, and video/AV domain models in a single flat namespace with a 100+ symbol __init__.py",
+      "confidence": "high",
+      "suggestion": "Group models into domain sub-packages (e.g., base/models/ticketing/, base/models/talk/, base/models/live/) and update __init__.py to import from them; this is an incremental migration, not a big-bang rewrite",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/base/models/world.py",
+        "app/eventyay/base/models/bbb.py",
+        "app/eventyay/base/models/janus.py",
+        "app/eventyay/base/models/chat.py",
+        "app/eventyay/base/models/streaming.py"
+      ],
+      "evidence": [
+        "__init__.py exports 100+ symbols spanning ticketing (Order, Invoice, Voucher, CartPosition), talk (Submission, Review, TalkSlot, Schedule), video (BBBServer, JanusServer, TurnServer, StreamingServer, StreamSchedule), and social (Channel, ChatEvent, Poll, Roulette, Exhibitor)",
+        "A new engineer cannot identify which models belong to which product domain without reading every file"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-002",
+      "summary": "eventyay_common/ sub-package name is confusing and duplicates 'common/' without documented ownership rule",
+      "confidence": "medium",
+      "suggestion": "Rename or merge eventyay_common into common, or add a clear ARCHITECTURE note at the package level explaining what belongs in each",
+      "related_files": [
+        "app/eventyay/eventyay_common/__init__.py",
+        "app/eventyay/common/__init__.py"
+      ],
+      "evidence": [
+        "Both eventyay/common/ and eventyay/eventyay_common/ exist; the redundant inner name 'eventyay_common' inside the eventyay package makes the distinction non-obvious",
+        "base/services/announcement.py, base/services/auth.py, and eventyay_common/tasks.py all provide cross-cutting services with no documented rule distinguishing which belongs where"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-003",
+      "summary": "control/ views still reference pretixcontrol/ template paths, exposing legacy namespace in the public surface",
+      "confidence": "high",
+      "suggestion": "Migrate template paths to eventyay/control/ namespace and update template directories accordingly; track remaining pretixcontrol/ references as a technical debt ticket",
+      "related_files": [
+        "app/eventyay/control/views/global_settings.py",
+        "app/eventyay/control/views/shredder.py"
+      ],
+      "evidence": [
+        "global_settings.py line 33: `template_name = 'pretixcontrol/global_settings.html'`",
+        "shredder.py line 41: `template_name = 'pretixcontrol/shredder/index.html'`"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "high_level_elegance",
+      "identifier": "hle-004",
+      "summary": "Announcement model is structurally inconsistent: not a PretalxModel, uses 'timestamp' instead of 'created', has no logging mixin",
+      "confidence": "high",
+      "suggestion": "Have Announcement extend PretalxModel (or at minimum TimestampedModel) to align with codebase conventions; rename 'timestamp' to 'created' for consistency",
+      "related_files": [
+        "app/eventyay/base/models/announcement.py"
+      ],
+      "evidence": [
+        "Announcement extends plain models.Model, not PretalxModel or LoggedModel",
+        "Field named 'timestamp' (auto_now_add=True) while 90% of sibling models use TimestampedModel's 'created'/'updated' fields",
+        "No log_action() method or LogMixin inheritance"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv-001",
+      "summary": "api/views/stripe.py uses a bare function-based view while all sibling api/views/*.py use DRF ModelViewSet/GenericViewSet",
+      "confidence": "high",
+      "suggestion": "Wrap the Stripe webhook handler in a DRF APIView or at minimum document why it must remain a function view (e.g., raw body access requirement for signature verification)",
+      "related_files": [
+        "app/eventyay/api/views/stripe.py",
+        "app/eventyay/api/views/webhooks.py",
+        "app/eventyay/api/views/organizer.py"
+      ],
+      "evidence": [
+        "stripe.py: `@csrf_exempt` `def stripe_webhook_view(request):` \u2014 plain Django function view",
+        "webhooks.py: `class WebHookViewSet(viewsets.ModelViewSet):` \u2014 DRF viewset",
+        "organizer.py: `class OrganizerViewSet(viewsets.ReadOnlyModelViewSet):` \u2014 DRF viewset"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv-002",
+      "summary": "Timestamp field naming uses three different conventions across sibling model files",
+      "confidence": "high",
+      "suggestion": "Rename 'timestamp' to 'created' in Announcement and ChatEvent (with a migration), or explicitly document the naming difference for models that do not inherit TimestampedModel",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/announcement.py",
+        "app/eventyay/base/models/chat.py"
+      ],
+      "evidence": [
+        "TimestampedModel (mixins.py): fields named 'created' and 'updated' \u2014 used by most models",
+        "Announcement.timestamp (announcement.py line 22): auto_now_add field named 'timestamp'",
+        "ChatEvent.timestamp (chat.py line 43): auto_now_add field named 'timestamp'"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv-003",
+      "summary": "LogMixin and LoggingMixin provide near-identical interfaces; having both in the same __init__.py export creates vocabulary divergence",
+      "confidence": "high",
+      "suggestion": "Pick one name; remove or deprecate the other; if LoggedModel and PretalxModel have genuinely different semantics, document that explicitly in each class's docstring",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py",
+        "app/eventyay/base/models/base.py",
+        "app/eventyay/base/models/__init__.py"
+      ],
+      "evidence": [
+        "mixins.py: class LogMixin with log_action()",
+        "base.py: class LoggingMixin with log_action() \u2014 near-identical body",
+        "__init__.py exports both LogMixin and LoggedModel (which inherits LoggingMixin)"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv-004",
+      "summary": "Import order violated in base/exporter.py: logger assigned before stdlib imports complete",
+      "confidence": "high",
+      "suggestion": "Move the logger assignment to after all imports, following PEP 8 and project style",
+      "related_files": [
+        "app/eventyay/base/exporter.py"
+      ],
+      "evidence": [
+        "exporter.py lines 1-6: `import io`, `import logging`, `import re`, `import tempfile`, then blank line, `logger = logging.getLogger(__name__)`, then `from collections import OrderedDict, namedtuple` \u2014 logger assignment appears mid-import block"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "convention_outlier",
+      "identifier": "conv-005",
+      "summary": "control/forms/organizer_forms/ uses a sub-package with verbose file names while sibling control/forms/ uses flat short-named files \u2014 inconsistent directory granularity",
+      "confidence": "medium",
+      "suggestion": "Decide on a consistent strategy: either flatten organizer_forms/ into control/forms/organizer_*.py files (matching the existing convention), or document the sub-package rule",
+      "related_files": [
+        "app/eventyay/control/forms/organizer_forms/base_organizer_footer_link_form_set.py",
+        "app/eventyay/control/forms/orders.py",
+        "app/eventyay/control/forms/checkin.py"
+      ],
+      "evidence": [
+        "control/forms/ flat: checkin.py, orders.py, product.py, widgets.py",
+        "control/forms/organizer_forms/ sub-package: base_organizer_footer_link_form_set.py, event_meta_property_form.py, gate_form.py, gift_card_update_form.py \u2014 each with 1-2 classes"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-001",
+      "summary": "FileCleanupMixin._delete_files() uses suppress(Exception), silently swallowing file deletion errors with no logging",
+      "confidence": "high",
+      "suggestion": "Replace suppress(Exception) with a specific catch for (OSError, FileNotFoundError, SuspiciousFileOperation) and add logger.warning() so deletion failures are at least observable in logs",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "Line 184: `with suppress(Exception):` around `value.delete(save=False)` \u2014 any OS, storage backend, or network error during file deletion is silently ignored",
+        "No logger.warning() or logger.error() call before or inside the suppress block"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-002",
+      "summary": "check_access_permissions() in organizer.py raises generic Exception with a translated string, violating agents.md error handling rule",
+      "confidence": "high",
+      "suggestion": "Define a PermissionConfigurationError or reuse Django's ValidationError / PermissionDenied and raise that instead of bare Exception",
+      "related_files": [
+        "app/eventyay/base/models/organizer.py"
+      ],
+      "evidence": [
+        "Line 48: `raise Exception(_(\"There must be at least one team...\"))` \u2014 with a TODO comment acknowledging this should use a concrete exception type",
+        "agents.md rule 3: 'preserve specific exception types; do not replace with generic Exception'"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-003",
+      "summary": "LargeResultSetPage.has_next() uses bare `except:` catching all exceptions including SystemExit and KeyboardInterrupt",
+      "confidence": "high",
+      "suggestion": "Replace bare except with `except (IndexError, StopIteration): return False` which captures the expected out-of-bounds case without masking fatal exceptions",
+      "related_files": [
+        "app/eventyay/control/views/__init__.py"
+      ],
+      "evidence": [
+        "control/views/__init__.py lines 92-95: `try: return self[self.paginator.per_page - 1] except: return False` \u2014 bare except with no logging, no specific exception type"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-004",
+      "summary": "base/services/announcement.py @database_sync_to_async functions expose DoesNotExist to Channels consumers without handling",
+      "confidence": "high",
+      "suggestion": "Wrap get() calls with try/except Announcement.DoesNotExist and raise a domain-appropriate exception (e.g., ValueError or a custom ChannelError) that the consumer can handle cleanly",
+      "related_files": [
+        "app/eventyay/base/services/announcement.py"
+      ],
+      "evidence": [
+        "get_announcement(pk, event): `Announcement.objects.get(pk=pk, event=event)` \u2014 raises DoesNotExist if pk is invalid, which propagates as an unhandled exception to the Channels WebSocket consumer",
+        "update_announcement(): same pattern \u2014 `Announcement.objects.get(pk=kwargs.pop('id'), event=kwargs.pop('event'))` with no DoesNotExist handling"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "error_consistency",
+      "identifier": "err-005",
+      "summary": "LoggingMixin.log_action() and LogMixin.log_action() have no exception handling around the LogEntry.objects.create() / logentry.save() DB write",
+      "confidence": "medium",
+      "suggestion": "Wrap the DB write in try/except (IntegrityError, OperationalError) and log at ERROR level if the audit entry cannot be written; this prevents audit logging failures from aborting business transactions",
+      "related_files": [
+        "app/eventyay/base/models/base.py",
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "base.py LoggingMixin.log_action() lines 93-118: logentry.save() is called with no try/except",
+        "mixins.py LogMixin.log_action() LogEntry.objects.create() is called with no try/except",
+        "A DB constraint violation in audit logging would propagate as an uncaught IntegrityError to the business operation that triggered it"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-001",
+      "summary": "FileCleanupMixin.process_image() uses generic verb 'process' without revealing what processing is performed",
+      "confidence": "high",
+      "suggestion": "Rename to `schedule_image_processing()` or `queue_image_task()` to communicate the asynchronous-dispatch intent rather than the vague 'process'",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "mixins.py lines 191-202: `def process_image(self, field, generate_thumbnail=False)` \u2014 delegates entirely to `task_process_image.apply_async()`",
+        "The method does nothing except queue a Celery task; 'process' could mean resize, format-convert, validate, etc."
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-002",
+      "summary": "BBBCall model fields 'attendee_pw' and 'moderator_pw' use 'pw' abbreviation inconsistent with codebase full-word convention",
+      "confidence": "medium",
+      "suggestion": "Rename to 'attendee_password' and 'moderator_password' with a database migration",
+      "related_files": [
+        "app/eventyay/base/models/bbb.py"
+      ],
+      "evidence": [
+        "bbb.py lines 32-33: `attendee_pw = models.CharField(...)` and `moderator_pw = models.CharField(...)` \u2014 'pw' abbreviation",
+        "Codebase convention uses full words: Order.secret, User.password, BBBServer.secret \u2014 no other 'pw' abbreviations found"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-003",
+      "summary": "SENSITIVE_KEYS constant is defined at module level then redefined as 'sensitive_keys' (local variable) inside log_action(), duplicating the same data",
+      "confidence": "high",
+      "suggestion": "Remove the inline local redefinition; reference the module-level SENSITIVE_KEYS constant inside log_action()",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "mixins.py line 12: `SENSITIVE_KEYS = ['password', 'secret', 'api_key']` at module level",
+        "mixins.py line 86: `sensitive_keys = ['password', 'secret', 'api_key']` inside log_action() \u2014 identical list, different name casing"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "naming_quality",
+      "identifier": "name-004",
+      "summary": "OrderedModel._get_attribute() uses generic name for a method that resolves a dotted attribute path",
+      "confidence": "medium",
+      "suggestion": "Rename to `_resolve_dotted_attr()` or `_traverse_attribute_path()` to communicate the dotted-path traversal intent",
+      "related_files": [
+        "app/eventyay/base/models/mixins.py"
+      ],
+      "evidence": [
+        "mixins.py lines 276-280: `def _get_attribute(self, attribute):` \u2014 resolves dotted string paths like 'urls.up' via repeated getattr; name gives no hint of the dotted-path semantics"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "parse_ics_token_wrapper",
+      "summary": "parse_ics_token is a trivial one-liner forwarding to load_starred_ics_token, adding no policy",
+      "confidence": "high",
+      "suggestion": "Inline parse_ics_token at each call site or rename load_starred_ics_token to parse_ics_token and add a helper to get the tuple when expiry is needed.",
+      "related_files": [
+        "app/eventyay/agenda/views/utils.py"
+      ],
+      "evidence": [
+        "parse_ics_token(token, event=event) calls load_starred_ics_token(token, event=event) and returns only user_id, discarding expiry_dt without documentation"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "base_payment_reverse_dep",
+      "summary": "base/payment.py imports from presale.views, creating an upward layer dependency",
+      "confidence": "high",
+      "suggestion": "Extract cart query helpers into eventyay.base.services.cart so that base.payment can import from the service layer without depending on a view layer.",
+      "related_files": [
+        "app/eventyay/base/payment.py"
+      ],
+      "evidence": [
+        "from eventyay.presale.views import get_cart, get_cart_total",
+        "from eventyay.presale.views.cart import cart_session, get_or_create_cart_id"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "utils_module_proliferation",
+      "summary": "Generic utils.py catch-all modules exist across 6+ packages, mixing domain constants with utility functions",
+      "confidence": "medium",
+      "suggestion": "Extract bounded sub-modules per responsibility (e.g., token.py, exporters.py) within each package to replace generic utils.py catch-alls.",
+      "related_files": [
+        "app/eventyay/agenda/views/utils.py",
+        "app/eventyay/presale/utils.py",
+        "app/eventyay/eventyay_common/utils.py",
+        "app/eventyay/event/utils.py",
+        "app/eventyay/schedule/utils.py",
+        "app/eventyay/features/social/utils.py"
+      ],
+      "evidence": [
+        "eventyay_common/utils.py mixes EventCreatedFor enum, JWT token generation, and subevent lookup in one flat module",
+        "agenda/views/utils.py mixes ICS token logic, exporter discovery, and HTTP response helpers"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "announcement_service_thin_wrappers",
+      "summary": "announcement service functions are async wrappers with no added policy beyond database_sync_to_async",
+      "confidence": "medium",
+      "suggestion": "Either inline these wrappers at call sites in the consumer layer or consolidate into a single AnnouncementService class with explicit methods that document intent.",
+      "related_files": [
+        "app/eventyay/base/services/announcement.py"
+      ],
+      "evidence": [
+        "create_announcement(**kwargs) is @database_sync_to_async and calls Announcement.objects.create(**{k:v for...}).serialize_public()",
+        "get_announcement(pk, event) is @database_sync_to_async and calls Announcement.objects.get(pk=pk, event=event).serialize_public()"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "abstraction_fitness",
+      "identifier": "checkin_private_symbol_leak",
+      "summary": "cart service imports private _save_answers from checkin service, violating service boundary",
+      "confidence": "high",
+      "suggestion": "Promote _save_answers to a public function or extract the shared logic into a common answers module that both cart and checkin services import.",
+      "related_files": [
+        "app/eventyay/base/services/cart.py",
+        "app/eventyay/base/services/checkin.py"
+      ],
+      "evidence": [
+        "from eventyay.base.services.checkin import _save_answers  (underscore-prefixed symbol)"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dual_html_sanitizer",
+      "summary": "bleach and nh3 both declared as dependencies for HTML sanitization \u2014 incomplete migration",
+      "confidence": "high",
+      "suggestion": "Audit all bleach usages, migrate to nh3, and remove bleach from pyproject.toml.",
+      "related_files": [
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "\"bleach>=6.3.0\" and \"nh3>=0.3.2\" both appear in dependencies",
+        "nh3 is used in app/eventyay/plugins/checkinlists/exporters.py",
+        "bleach is the legacy library nh3 is designed to replace"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "unpinned_git_deps",
+      "summary": "Four external plugins pinned to @main Git branches with no commit hash, creating silent breakage risk",
+      "confidence": "high",
+      "suggestion": "Pin each git dependency to a specific commit SHA (e.g., @abc1234) or create tagged releases and use version ranges. This ensures reproducible installs and prevents upstream main-branch changes from breaking builds.",
+      "related_files": [
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "\"eventyay-paypal @ git+https://github.com/fossasia/eventyay-paypal.git@main\"",
+        "\"eventyay-stripe @ git+https://github.com/fossasia/eventyay-stripe.git@main\"",
+        "\"eventyay-bitpay @ git+https://github.com/fossasia/eventyay-bitpay.git@main\"",
+        "\"exhibition @ git+https://github.com/fossasia/eventyay-exhibition.git@main\""
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "python_version_blocker",
+      "summary": "vat-moss-forked dependency blocks Python 3.13+ compatibility, documented but unresolved",
+      "confidence": "high",
+      "suggestion": "Evaluate whether vat-moss-forked can be replaced with pyvat (already in deps) or vat_moss directly, or vendor the specific EU VAT validation functions used to eliminate the blocker.",
+      "related_files": [
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "requires-python = \">=3.12, <3.13\"",
+        "Comment: \"# This library prevents us from being compatible with Python v3.13+.\"",
+        "\"vat-moss-forked>=2020.3.20.0.11.0\""
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "heavy_analytics_deps",
+      "summary": "pandas and matplotlib pulled in for analytics charts \u2014 heavy data-science libraries for a web app",
+      "confidence": "medium",
+      "suggestion": "Audit actual pandas/matplotlib usage in analytics; if only simple chart generation is needed, consider lighter alternatives (e.g., Pillow + manual drawing, or chart.js on the frontend) to reduce install size and startup overhead.",
+      "related_files": [
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "\"pandas>=2.3.3\" and \"matplotlib>=3.10.8\" in production dependencies",
+        "Seed files reference app/eventyay/features/analytics/graphs/utils.py suggesting chart generation is the primary use"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "dependency_health",
+      "identifier": "dual_pdf_libs",
+      "summary": "Three PDF-related libraries present (pdf2image, pdfrw, reportlab) with overlapping capabilities",
+      "confidence": "medium",
+      "suggestion": "Audit which PDF operations each library handles; consolidate where possible (reportlab already handles PDF generation; pdf2image adds rasterization, pdfrw adds manipulation \u2014 confirm each is truly needed).",
+      "related_files": [
+        "app/pyproject.toml"
+      ],
+      "evidence": [
+        "\"pdf2image>=1.17.0\", \"pdfrw>=0.4\", \"reportlab>=4.4.9\" all in dependencies",
+        "reportlab used in plugins/checkinlists/exporters.py for PDF generation"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "detect_event_monolith",
+      "summary": "_detect_event() is a 155-line function combining domain detection, locale, auth, permissions, plugin check, and signal dispatch",
+      "confidence": "high",
+      "suggestion": "Extract _check_event_access(request, url) for the live+session check, _check_ticket_visibility(request, url) for the ticket permission check, and _dispatch_request_signals(request) for the signal loop. Each is independently testable.",
+      "related_files": [
+        "app/eventyay/presale/utils.py"
+      ],
+      "evidence": [
+        "_detect_event handles: request.event_domain / organizer_domain / main domain routing, locale middleware call, live event check with session fallback, ticket viewing permission check, plugin check, and process_request signal dispatch",
+        "bare except Exception for session load swallows errors silently before continuing"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "exporter_state_mutation",
+      "summary": "get_schedule_exporter_content() mutates exporter object with ad-hoc attributes instead of passing parameters",
+      "confidence": "high",
+      "suggestion": "Add schedule, is_orga, and talk_ids as explicit parameters to the exporter's render() method, or introduce an ExportRequest dataclass passed to render(). This makes the function's side effects visible at the call site.",
+      "related_files": [
+        "app/eventyay/agenda/views/utils.py"
+      ],
+      "evidence": [
+        "exporter.schedule = schedule",
+        "exporter.is_orga = is_organizer",
+        "exporter.talk_ids = talk_ids  (set in two separate branches)"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "my_exporter_duplicated_query",
+      "summary": "SubmissionFavourite query duplicated in two branches of get_schedule_exporter_content() differing only by user_id source",
+      "confidence": "high",
+      "suggestion": "Resolve user_id from either the token or request.user before the query, then issue one query: user_id = user_id_from_token or request.user.id; talk_ids = SubmissionFavourite.objects.filter(user_id=user_id, ...).",
+      "related_files": [
+        "app/eventyay/agenda/views/utils.py"
+      ],
+      "evidence": [
+        "Token path: SubmissionFavourite.objects.filter(user_id=user_id, ...).values_list(...)",
+        "Authenticated user path: SubmissionFavourite.objects.filter(user_id=request.user.id, ...).values_list(...) \u2014 identical structure"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "low_level_elegance",
+      "identifier": "etag_logic_scattered",
+      "summary": "ETag comparison logic in etag_cache_page() is checked in three separate locations rather than resolved once",
+      "confidence": "medium",
+      "suggestion": "Introduce a helper that resolves the ETag state (miss, match, mismatch) at the start of the function and use it throughout, eliminating the repeated comparisons.",
+      "related_files": [
+        "app/eventyay/common/views/cache.py"
+      ],
+      "evidence": [
+        "Line 112: if current_etag and requested_etag and current_etag != requested_etag: current_etag = None",
+        "Line 114: elif requested_etag and current_etag == requested_etag: return 304",
+        "Line 134: if requested_etag and current_etag == requested_etag: return 304 (second check)"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "base_payment_presale_dep",
+      "summary": "base/payment.py imports view-layer symbols from presale.views, inverting the layer boundary",
+      "confidence": "high",
+      "suggestion": "Move get_cart, get_cart_total, cart_session, get_or_create_cart_id to eventyay.base.services.cart so both base.payment and presale.views can import from the service layer without crossing the boundary.",
+      "related_files": [
+        "app/eventyay/base/payment.py",
+        "app/eventyay/presale/views/__init__.py",
+        "app/eventyay/presale/views/cart.py"
+      ],
+      "evidence": [
+        "from eventyay.presale.views import get_cart, get_cart_total",
+        "from eventyay.presale.views.cart import cart_session, get_or_create_cart_id"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "event_model_business_rule_import",
+      "summary": "base/models/event.py imports from talk_rules.event and eventyay_common.video.permissions, pulling business rules into the model layer",
+      "confidence": "high",
+      "suggestion": "Invert the dependency: have talk_rules and video.permissions reference the model through explicit model imports, not the reverse. Use rules model permissions (rules_permissions on Meta) that reference callables from the model file itself, or move permission callables into the model module.",
+      "related_files": [
+        "app/eventyay/base/models/event.py"
+      ],
+      "evidence": [
+        "from eventyay.talk_rules.event import (can_change_event_settings, can_create_events, has_any_permission, is_event_visible,)",
+        "from eventyay.eventyay_common.video.permissions import VIDEO_PERMISSION_BY_FIELD, VIDEO_TRAIT_ROLE_MAP"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "access_code_lazy_import",
+      "summary": "SubmitterAccessCode.send_invite() uses lazy import of QueuedMail to avoid circular dependency \u2014 signals unresolved boundary",
+      "confidence": "high",
+      "suggestion": "Extract send_invite into an access_code service module that imports both SubmitterAccessCode and QueuedMail at module level, removing the circular dependency by placing the orchestration outside the model.",
+      "related_files": [
+        "app/eventyay/base/models/access_code.py"
+      ],
+      "evidence": [
+        "def send_invite(self, to, subject, text): from eventyay.base.models import QueuedMail"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "locale_middleware_sentinel",
+      "summary": "LocaleMiddleware instantiated with NotImplementedError as get_response sentinel in _detect_event",
+      "confidence": "high",
+      "suggestion": "Either extract locale processing into a standalone function (avoid middleware instantiation entirely) or use a no-op lambda as the get_response argument to be explicit about the intent.",
+      "related_files": [
+        "app/eventyay/presale/utils.py"
+      ],
+      "evidence": [
+        "LocaleMiddleware(NotImplementedError).process_request(request)  \u2014 passing an exception class as the get_response argument"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "mid_level_elegance",
+      "identifier": "orders_service_hub",
+      "summary": "base/services/orders.py imports from 20+ modules including OAuthApplication \u2014 excessive fan-in blurs service seam",
+      "confidence": "medium",
+      "suggestion": "Split the orders service into focused sub-services: order_creation.py, order_cancellation.py, order_payment.py. The OAuthApplication import specifically suggests API concerns leaking into the core service \u2014 move that logic to the API layer.",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "Imports include: base.models (12 models), base.models.event, base.models.orders, base.models.organizer, base.models.product, base.models.tax, base.payment, base.services (invoices, locking, mail, pricing, quotas, tasks, tickets), base.signals, api.models.OAuthApplication"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "attendee_list_missing_mixin",
+      "summary": "AttendeeListView in admin.py lacks AdministratorPermissionRequiredMixin, using inline queryset filtering instead",
+      "confidence": "high",
+      "suggestion": "Add AdministratorPermissionRequiredMixin to AttendeeListView's base classes so auth is enforced at dispatch rather than queryset filtering: class AttendeeListView(AdministratorPermissionRequiredMixin, PaginationMixin, ListView).",
+      "related_files": [
+        "app/eventyay/control/views/admin.py"
+      ],
+      "evidence": [
+        "class AttendeeListView(ListView): \u2014 no AdministratorPermissionRequiredMixin in MRO",
+        "Authorization is via: if not self.request.user.has_active_staff_session(...): allowed_organizers = ...; qs = qs.filter(...)",
+        "Sibling views AdminDashboard, AdminEventStartpageToggle, VoucherList all use AdministratorPermissionRequiredMixin at dispatch time"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "submission_list_missing_mixin",
+      "summary": "SubmissionListView in admin.py lacks AdministratorPermissionRequiredMixin, using inline has_active_staff_session check",
+      "confidence": "high",
+      "suggestion": "Apply AdministratorPermissionRequiredMixin to SubmissionListView consistently with sibling admin views.",
+      "related_files": [
+        "app/eventyay/control/views/admin.py"
+      ],
+      "evidence": [
+        "SubmissionListView (line ~270) extends a base class without AdministratorPermissionRequiredMixin",
+        "if not self.request.user.has_active_staff_session(...): \u2014 inline check in get_queryset"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "magic_permission_strings",
+      "summary": "Permission strings are magic literals scattered across views, decorators, and Meta classes without a shared constants module",
+      "confidence": "medium",
+      "suggestion": "Create an eventyay.core.permissions.strings (or extend the existing Permission enum) that centralizes all permission string constants. Replace magic literals in views and decorators with references to these constants.",
+      "related_files": [
+        "app/eventyay/control/permissions.py",
+        "app/eventyay/orga/views/review.py",
+        "app/eventyay/base/models/access_code.py"
+      ],
+      "evidence": [
+        "permission_required = 'base.list_review' in ReviewDashboard",
+        "Legacy shim: if permission == 'can_change_settings': permission = 'can_change_event_settings'",
+        "rules_permissions = {'list': can_change_event_settings, ...} in access_code model \u2014 mixes string-based and callable-based patterns"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "admin_mode_bypass_no_audit",
+      "summary": "Admin mode bypass in ActionFromUrl._check_permission() grants full permissions without audit logging",
+      "confidence": "medium",
+      "suggestion": "Add an audit log entry when admin mode bypass is used (e.g., call request.event.log_action or a dedicated audit function) so admin-elevated actions are traceable.",
+      "related_files": [
+        "app/eventyay/common/views/mixins.py"
+      ],
+      "evidence": [
+        "def _check_permission(self, permission_name): if is_admin_mode_active(self.request): return True"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "authorization_consistency",
+      "identifier": "dual_auth_systems",
+      "summary": "Control panel uses custom EventPermissionRequiredMixin; orga side uses rules library PermissionRequired \u2014 two parallel authorization patterns",
+      "confidence": "medium",
+      "suggestion": "Align both systems to use the rules library consistently. Migrate EventPermissionRequiredMixin in control/permissions.py to extend rules.contrib.views.PermissionRequiredMixin with appropriate get_permission_object() providing the event. This unifies the two patterns and eliminates custom decorator logic.",
+      "related_files": [
+        "app/eventyay/control/permissions.py",
+        "app/eventyay/common/views/mixins.py"
+      ],
+      "evidence": [
+        "control/permissions.py: EventPermissionRequiredMixin uses custom event_permission_required() decorator with has_event_permission()",
+        "common/views/mixins.py: EventPermissionRequired inherits from rules.contrib.views.PermissionRequiredMixin \u2014 different auth evaluation path"
+      ],
+      "impact_scope": "codebase",
+      "fix_scope": "architectural_change"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "AGD-01",
+      "summary": "_extract_bearer_token docstring echoes the function signature without adding domain insight",
+      "confidence": "medium",
+      "suggestion": "Trim the docstring to a single sentence describing why this helper exists separately from DRF's default auth flow, e.g. 'Extracts the bearer token before session authentication runs, for endpoints that accept anonymous + token traffic.'",
+      "related_files": [
+        "app/eventyay/api/views/event.py"
+      ],
+      "evidence": [
+        "Docstring says 'Parse and validate the Authorization: Bearer <token> header. Returns the raw token bytes on success. Raises AuthenticationFailed when the header is missing or malformed.' \u2014 all of this is derivable directly from the function signature and three explicit raise statements in the 14-line body"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "ai_generated_debt",
+      "identifier": "AGD-02",
+      "summary": "Provenance comments ('# from eventyay-talk') label origin but add no executable or design insight",
+      "confidence": "high",
+      "suggestion": "Remove the provenance comments or replace with a single module-level note referencing the migration ticket, e.g. '# Functions below were ported from eventyay-talk; see #ISSUE for consolidation plan'",
+      "related_files": [
+        "app/eventyay/base/plugins.py"
+      ],
+      "evidence": [
+        "Lines 59, 71, 81: three consecutive '# from eventyay-talk' markers before each helper function; these repeat three times without explaining usage constraints, planned consolidation, or migration status"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-01",
+      "summary": "orga/permissions.py legacy permission shim survived past its v2025.1.0 removal deadline",
+      "confidence": "high",
+      "suggestion": "Audit whether any plugin in INSTALLED_APPS or in the plugin registry checks 'base.change_settings'; if none do, delete orga/permissions.py. If some still do, set a new concrete deadline and create a tracking issue.",
+      "related_files": [
+        "app/eventyay/orga/permissions.py"
+      ],
+      "evidence": [
+        "'# Legacy for plugins. TODO remove after v2025.1.0' \u2014 today is 2026-03-15, the deadline is at least a year past",
+        "rules.add_perm('base.change_settings', can_change_event_settings) is the entire file body \u2014 if external plugins no longer use this permission string, the entire file can be deleted"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-02",
+      "summary": "cancelevent.py active production code logs events under pretix.* namespace instead of eventyay.*",
+      "confidence": "high",
+      "suggestion": "Replace 'pretix.event.canceled' with 'eventyay.event.canceled' and 'pretix.event.product.changed' with 'eventyay.event.product.changed'. Add the old strings to logdisplay.py's backward-compat mapping only for historic DB rows, not for newly emitted events.",
+      "related_files": [
+        "app/eventyay/base/services/cancelevent.py"
+      ],
+      "evidence": [
+        "Line 209: event.log_action('pretix.event.canceled', user=user)",
+        "Line 217: i.log_action('pretix.event.product.changed', ...) \u2014 these generate new log rows under the old namespace, compounding the compatibility burden in logdisplay.py"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-03",
+      "summary": "SubmissionFavouriteDeprecated is an active production model with no removal plan",
+      "confidence": "high",
+      "suggestion": "Check whether any non-deprecated code path relies on SubmissionFavouriteDeprecated data. If a replacement favourite mechanism exists, migrate existing rows, write a squashed migration to drop the table, and remove the class and its serializer.",
+      "related_files": [
+        "app/eventyay/base/models/submission.py",
+        "app/eventyay/api/views/submission.py"
+      ],
+      "evidence": [
+        "app/eventyay/base/models/submission.py line 1081: class SubmissionFavouriteDeprecated(models.Model) \u2014 the word 'Deprecated' in the class name signals intended removal",
+        "app/eventyay/api/views/submission.py line 63: imported and used in the view, so the deprecated model is still on the active call path"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-04",
+      "summary": "LEGACY API version is still fully supported with no documented removal timeline",
+      "confidence": "high",
+      "suggestion": "Set a concrete end-of-life date for the LEGACY version (e.g., one release cycle from now). Add an HTTP deprecation header to all LEGACY responses. Create a tracking issue with migration guide for any consumers. Remove the shim in pagination.py and serializers/legacy.py once no active callers remain.",
+      "related_files": [
+        "app/eventyay/api/versions.py",
+        "app/eventyay/api/pagination.py",
+        "app/eventyay/api/serializers/legacy.py"
+      ],
+      "evidence": [
+        "versions.py: LEGACY in DEPRECATED_VERSIONS but also in SUPPORTED_VERSIONS \u2014 still served",
+        "pagination.py: LimitOffsetPagination shim with 'TODO remove once legacy API is getting removed' but no issue or date",
+        "api/serializers/legacy.py: entire file of legacy serializers, >100 LOC, with no removal annotation"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "incomplete_migration",
+      "identifier": "IM-05",
+      "summary": "PluginType deprecated enum still present and could be imported by external plugins",
+      "confidence": "medium",
+      "suggestion": "Survey installed and published plugins for PluginType references. Issue a deprecation warning on first import using warnings.warn. Set a removal version and document it in the changelog.",
+      "related_files": [
+        "app/eventyay/base/plugins.py"
+      ],
+      "evidence": [
+        "Lines 18-28: 'THIS IS DEPRECATED, DO NOT USE ANY MORE. This is only not removed yet as external plugins might have references to this enum.' \u2014 indefinite retention rationale with no plan"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-01",
+      "summary": "base/models/ flat directory overload \u2014 60+ files spanning 6+ distinct domains",
+      "confidence": "high",
+      "suggestion": "Staged reorg plan: (1) Create subdirectories: base/models/ticketing/, base/models/conferencing/, base/models/chat/, base/models/video/, base/models/seating/. (2) Move files by domain affinity. (3) Update __init__.py imports to preserve the flat public API surface (no callers need to change). (4) Validate with 'python -c \"from eventyay.base.models import *\"' and run pytest tests/ to confirm no import regressions. Do this in a single PR per subdomain to keep diffs reviewable.",
+      "related_files": [
+        "app/eventyay/base/models/__init__.py",
+        "app/eventyay/base/models/bbb.py",
+        "app/eventyay/base/models/chat.py",
+        "app/eventyay/base/models/janus.py",
+        "app/eventyay/base/models/poster.py",
+        "app/eventyay/base/models/poll.py",
+        "app/eventyay/base/models/seating.py",
+        "app/eventyay/base/models/streaming.py"
+      ],
+      "evidence": [
+        "60+ model files in a single flat directory; domains present: ticketing (orders, product, vouchers, tax, invoices), conferencing (submission, schedule, slot, track), chat (chat, channel, membership), video (bbb, janus, streaming, stream_schedule, turn), seating (seating, room, roomquestion), exhibitor (exhibitor, poster, roulette)"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-02",
+      "summary": "base/services/ flat directory overload \u2014 40 service files across distinct domains",
+      "confidence": "high",
+      "suggestion": "Mirror the model subdirectory split in services/: base/services/ticketing/, base/services/conferencing/, base/services/chat/, base/services/video/. Move files and update all importers. Use 'grep -r \"from eventyay.base.services\" app/' to enumerate callers before moving. Validate with pytest tests/.",
+      "related_files": [
+        "app/eventyay/base/services/__init__.py",
+        "app/eventyay/base/services/bbb.py",
+        "app/eventyay/base/services/chat.py",
+        "app/eventyay/base/services/poll.py",
+        "app/eventyay/base/services/poster.py",
+        "app/eventyay/base/services/room.py"
+      ],
+      "evidence": [
+        "40 service files in a flat directory; domains overlap with base/models/ \u2014 chat, video (bbb, janus, turn), ticketing (orders, cart, invoices, vouchers, pricing), conferencing (teams, shredder)"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-03",
+      "summary": "common/ and eventyay_common/ have overlapping, ambiguous responsibilities",
+      "confidence": "medium",
+      "suggestion": "Rename eventyay_common/ to a more descriptive package (e.g., account/ or eventyay_admin/) reflecting its actual contents. Then audit common/ to ensure it contains only genuinely cross-cutting utilities. Run 'grep -r \"eventyay_common\" app/' to enumerate import sites before renaming.",
+      "related_files": [
+        "app/eventyay/common/",
+        "app/eventyay/eventyay_common/"
+      ],
+      "evidence": [
+        "common/ contains: context_processors, exceptions, image, mail, text, urls, views/mixins",
+        "eventyay_common/ contains: views/account, views/organizer, views/event, views/team \u2014 all are event-management UI views, not 'common' utilities",
+        "The split suggests eventyay_common/ holds a specific subdomain (organizer/account UI) rather than shared infrastructure"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "package_organization",
+      "identifier": "PO-04",
+      "summary": "core/ is a thin straggler package with only 2 utility files",
+      "confidence": "medium",
+      "suggestion": "Move core/utils/redis.py and core/utils/statsd.py into helpers/ (or helpers/infra/). Update importers with 'grep -r \"from eventyay.core\" app/'. Remove the now-empty core/ package to eliminate the ambiguous boundary.",
+      "related_files": [
+        "app/eventyay/core/utils/redis.py",
+        "app/eventyay/core/utils/statsd.py"
+      ],
+      "evidence": [
+        "core/utils/ contains exactly 2 files (redis.py, statsd.py); helpers/ already exists for cross-cutting utilities",
+        "Dedicated 'core' namespace implies architectural centrality but delivers only two infrastructure helpers"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-01",
+      "summary": "TALK_HOSTNAME computed from settings at module import time in event.py, creating stale-snapshot risk",
+      "confidence": "high",
+      "suggestion": "Remove the module-level constant. Access settings.TALK_HOSTNAME directly at call sites, or define a small accessor function: def get_talk_hostname(): return settings.TALK_HOSTNAME. This costs negligible runtime overhead and is consistent with Django best practice of not caching settings at module level.",
+      "related_files": [
+        "app/eventyay/base/models/event.py"
+      ],
+      "evidence": [
+        "Line 84: TALK_HOSTNAME = settings.TALK_HOSTNAME \u2014 this is evaluated once when the module is first imported",
+        "Any test using override_settings(TALK_HOSTNAME=...) or any code that reads settings after the module is cached will see the original value, not the overridden one"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-02",
+      "summary": "Multiple module-level constants derived from settings at import time across several files",
+      "confidence": "high",
+      "suggestion": "Convert all of these to lazy accessors or functools.lru_cache(None) functions (which can be cache-cleared in tests). For Path derivations like VIDEO_DIST_DIR, use a module-level function rather than a constant. For language mappings that are expensive to rebuild, use django.test.signals.setting_changed to invalidate the cache. Coordinate the fix across all 7 files in a single refactor pass.",
+      "related_files": [
+        "app/eventyay/common/language.py",
+        "app/eventyay/base/i18n.py",
+        "app/eventyay/agenda/management/commands/export_schedule_html.py",
+        "app/eventyay/multidomain/views.py",
+        "app/eventyay/features/live/views.py",
+        "app/eventyay/common/templatetags/vite.py",
+        "app/eventyay/eventyay_common/views/account/basic.py"
+      ],
+      "evidence": [
+        "common/language.py: LANGUAGE_CODES_MAPPING = {language.lower(): language for language in settings.LANGUAGES_INFORMATION}",
+        "base/i18n.py: ALLOWED_LANGUAGES = dict(settings.LANGUAGES)",
+        "export_schedule_html.py: SERVER_NAME = settings.SITE_URL.split('://')[1]",
+        "multidomain/views.py and features/live/views.py: VIDEO_DIST_DIR = cast(Path, settings.STATIC_ROOT) / 'video'",
+        "vite.py: MANIFEST_PATH = cast(Path, settings.STATIC_ROOT) / 'schedule-editor/...'",
+        "account/basic.py: VALID_LANGUAGE_CODES = {code for code, __ in settings.LANGUAGES}"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "initialization_coupling",
+      "identifier": "IC-03",
+      "summary": "Module-level Celery import in base/apps.py executes outside AppConfig.ready() with silent failure",
+      "confidence": "high",
+      "suggestion": "Remove the duplicate module-level Celery import (lines 29-32). The import inside ready() (lines 18-21) already handles the celery initialization. If the module-level import is needed for a specific Celery autodiscovery reason, move it inside ready() and add a log warning on ImportError.",
+      "related_files": [
+        "app/eventyay/base/apps.py"
+      ],
+      "evidence": [
+        "Lines 29-32: 'try: import eventyay.celery_app as celery # NOQA\\nexcept ImportError: pass' \u2014 this is outside the EventyayBaseConfig class, executing at Python import time",
+        "The ImportError is silenced, so a mis-installed or unavailable celery package produces no diagnostic output",
+        "The import appears redundant \u2014 line 18-21 inside ready() already imports celery_app with the same silent-ignore pattern"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-01",
+      "summary": "PaginationMixin implicitly contracts with 4 undeclared self attributes from Django ListView",
+      "confidence": "high",
+      "suggestion": "Add explicit protocol documentation or use typing.Protocol to declare the required interface. At minimum, add a class-level comment listing required host attrs, e.g. '# Requires host: self.request (HttpRequest), self.paginate_by (int|None)'. Alternatively, guard with getattr(self, 'paginate_by', None) to make the mixin more resilient.",
+      "related_files": [
+        "app/eventyay/control/views/__init__.py"
+      ],
+      "evidence": [
+        "PaginationMixin.get_paginate_by references self.request, self.paginate_by, self.DEFAULT_PAGINATION without declaring them as required by the mixin protocol",
+        "The mechanical coupling detector flagged: 'Implicit host contract: PaginationMixin depends on 4 undeclared self attrs'",
+        "This means PaginationMixin cannot be safely mixed with non-ListView bases without runtime AttributeError"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-02",
+      "summary": "rolledback_transaction context manager duplicated in base/models/transaction.py and helpers/database.py",
+      "confidence": "high",
+      "suggestion": "Confirm the two definitions are identical. Delete base/models/transaction.py and keep only helpers/database.rolledback_transaction. Run grep -r 'from eventyay.base.models.transaction' app/ to confirm no remaining callers.",
+      "related_files": [
+        "app/eventyay/base/models/transaction.py",
+        "app/eventyay/helpers/database.py"
+      ],
+      "evidence": [
+        "base/models/transaction.py is 29 LOC and defines rolledback_transaction",
+        "base/services/invoices.py imports: from eventyay.helpers.database import rolledback_transaction \u2014 indicating helpers/database.py also defines it",
+        "Mechanical scan flags base/models/transaction.py as orphaned (zero static importers), consistent with duplicate definition where one copy is unused"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-03",
+      "summary": "Two parallel parameterized webhook event subclasses with identical structure instead of one generic class",
+      "confidence": "medium",
+      "suggestion": "Merge the two parameterized classes into WebhookEvent itself: accept action_type and verbose_name as __init__ parameters and make build_payload abstract. If payload logic differs significantly between order and event webhook types, use a single ParametrizedWebhookEvent with a payload_builder callable argument, or keep two subclasses but remove the duplicate __init__/property boilerplate by defining them once in the base.",
+      "related_files": [
+        "app/eventyay/api/webhooks.py"
+      ],
+      "evidence": [
+        "ParametrizedOrderWebhookEvent and ParametrizedEventWebhookEvent both: accept (action_type, verbose_name) in __init__, store them as _action_type and _verbose_name, expose them via @property \u2014 the only difference is build_payload logic",
+        "WebhookEvent base class __init__ is empty (just pass), making the two subclasses structurally identical at the init layer"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-04",
+      "summary": "base/services/invoices.py silently swallows exception in catch block at invoice generation boundary",
+      "confidence": "medium",
+      "suggestion": "Identify the catch block and either re-raise the exception after logging, or return a structured error result so callers can take appropriate action. At invoice generation boundaries, prefer re-raise or explicit error propagation over silent continuation.",
+      "related_files": [
+        "app/eventyay/base/services/invoices.py"
+      ],
+      "evidence": [
+        "Mechanical scan flagged: '1x Catch block that only logs (swallowed error)' for this file",
+        "Invoice generation is a financial operation \u2014 silent swallowing of exceptions here can result in invoices not being created without any caller-visible error"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "design_coherence",
+      "identifier": "DC-05",
+      "summary": "api/serializers/fields.py is orphaned \u2014 72 LOC with zero static importers",
+      "confidence": "medium",
+      "suggestion": "Search for dynamic imports: grep -r 'fields.ListMultipleChoiceField\\|fields.UploadedFileField\\|importlib.*fields' app/. If genuinely unused, delete the file. If used via a non-import mechanism (e.g., string reference in settings), document that mechanism explicitly.",
+      "related_files": [
+        "app/eventyay/api/serializers/fields.py"
+      ],
+      "evidence": [
+        "Mechanical scan: '[orphaned] Orphaned file (72 LOC): zero importers, not an entry point'",
+        "File defines ListMultipleChoiceField and UploadedFileField \u2014 custom serializer fields that would be used in other serializers if needed",
+        "No import found in other serializer files during direct review"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "d4e9bd9ef486d9f9",
+      "reasoning": "The rubric explicitly says: 'Do NOT recommend config/context objects or dependency injection wrappers just to reduce parameter count; only group when the grouping has independent semantic meaning.' The seating model parameters are domain-inherent (seat, position, zone, category) and do not have a semantically coherent grouping that would improve clarity. Dismiss."
+    },
+    {
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "bd8b62b79f5b9008",
+      "reasoning": "1128 lines is large but the submission model is the central domain object of the conference-talk system with inherently complex state machine, multiple manager variants, speaker roles, and serialization. The complexity is domain-inherent per the rubric skip rule. The PO batch (package_organization) is a better venue for the split recommendation."
+    },
+    {
+      "concern_verdict": "dismissed",
+      "concern_fingerprint": "3b6d1a2dc1dbf111",
+      "reasoning": "Django's save() method is overridden across many model and form classes with intentionally varying signatures \u2014 this is standard Django pattern, not an interface design defect. The 9 variants across 59 files is expected in a large Django project."
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-01",
+      "summary": "BaseAuthBackend.form_authenticate / request_authenticate use bare 'return' instead of 'return None', breaking stated contract",
+      "confidence": "high",
+      "suggestion": "Replace bare 'return' with 'return None' on both methods to make the None contract explicit and satisfy type checkers",
+      "related_files": [
+        "app/eventyay/base/auth.py"
+      ],
+      "evidence": [
+        "Line 64: 'return' (no value) where docstring says 'return a User object or None'",
+        "Line 75: same pattern in request_authenticate"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-02",
+      "summary": "new_refund_control_form_render annotated -> str | None but body ends with bare 'return'",
+      "confidence": "high",
+      "suggestion": "Change bare 'return' to 'return None' for consistency with annotation",
+      "related_files": [
+        "app/eventyay/base/payment.py"
+      ],
+      "evidence": [
+        "Line 845: def new_refund_control_form_render(...) -> str | None",
+        "Line 901: bare 'return' rather than 'return None'"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-03",
+      "summary": "CompatibleCountryField.to_representation has no return on else-branch, implicitly returns None which breaks the str contract",
+      "confidence": "high",
+      "suggestion": "Add 'return None' or 'return \"\"' as an explicit fallback else-branch to honor the serialization contract",
+      "related_files": [
+        "app/eventyay/api/serializers/order.py"
+      ],
+      "evidence": [
+        "Lines 65-69: if instance.country: return str(...); elif hasattr(...): return ...; \u2014 missing final else/return, so if neither branch matches, None is returned silently"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-04",
+      "summary": "perform_checkin docstring duplicates :param op description for :param clist",
+      "confidence": "high",
+      "suggestion": "Fix docstring for :param clist to accurately describe the CheckinList parameter",
+      "related_files": [
+        "app/eventyay/base/services/checkin.py"
+      ],
+      "evidence": [
+        "Line 396: ':param clist: The order position to check in' \u2014 should read 'The check-in list to validate against'"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-05",
+      "summary": "_cancel_order and mark_order_refunded accept int|Model polymorphically with no type annotation, creating hidden caller contracts",
+      "confidence": "medium",
+      "suggestion": "Either annotate the parameter as Union[int, Order] and document the behavior, or enforce a single type at the API boundary by requiring Order objects everywhere",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "mark_order_refunded line 248: passes order.pk (int) to _cancel_order which resolves it internally with Order.objects.get",
+        "_cancel_order line 426: 'if isinstance(order, int): order = Order.objects.get(pk=order)' \u2014 undocumented polymorphism"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "contract_coherence",
+      "identifier": "CC-06",
+      "summary": "approve_order and deny_order return order.pk (int) with no return annotation; callers depend on this implicitly",
+      "confidence": "high",
+      "suggestion": "Add '-> int' return type annotation to both functions",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "approve_order line 356: 'return order.pk' \u2014 no -> int annotation",
+        "deny_order line 400: 'return order.pk' \u2014 same"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "logic_clarity",
+      "identifier": "LC-01",
+      "summary": "build_time() in get_logic_environment falls through all branches and returns None implicitly for unknown time types",
+      "confidence": "high",
+      "suggestion": "Add an else clause that raises ValueError(f'Unknown time type {t!r}') to surface the logic error at the source rather than at the comparison site",
+      "related_files": [
+        "app/eventyay/base/services/checkin.py"
+      ],
+      "evidence": [
+        "Lines 53-62: build_time handles 'custom', 'date_from', 'date_to', 'date_admission' \u2014 any other value silently returns None",
+        "Callers in the JSON logic engine use the result as a datetime for comparison, so None would cause a TypeError at runtime"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "logic_clarity",
+      "identifier": "LC-02",
+      "summary": "is_allowed() in BasePaymentProvider calls get_or_create_cart_id() which has a cart-creation side effect inside a read-only check method",
+      "confidence": "high",
+      "suggestion": "Use a non-creating helper such as reading from request.session directly for the cart_id, or document explicitly that is_allowed() has a session side effect",
+      "related_files": [
+        "app/eventyay/base/payment.py"
+      ],
+      "evidence": [
+        "Line 529: 'timing = self._is_still_available(cart_id=get_or_create_cart_id(request))'",
+        "get_or_create_cart_id creates a new cart session if none exists \u2014 is_allowed() is named and documented as a query method, not a mutating method"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "logic_clarity",
+      "identifier": "LC-03",
+      "summary": "err accumulation in _check_positions silently discards all-but-first errors; later errors in same run are lost",
+      "confidence": "medium",
+      "suggestion": "Document clearly that only the first error is reported to the user, or use a list to collect all errors and raise with the first, to avoid surprising developers who assume all errors are visible",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "Throughout _check_positions: 'err = err or error_messages[...]' \u2014 once err is set, all subsequent error assignments are no-ops",
+        "The function breaks or continues on individual position errors but accumulates only the first message"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "logic_clarity",
+      "identifier": "LC-04",
+      "summary": "CartManager._delete_out_of_timeframe() returns err (which may be None) requiring implicit null check by caller",
+      "confidence": "medium",
+      "suggestion": "Add return type annotation '-> Optional[str]' and document that None means success, or convert to raising CartError and returning None always",
+      "related_files": [
+        "app/eventyay/base/services/cart.py"
+      ],
+      "evidence": [
+        "Lines 253-278: function returns None or a string error; no type annotation",
+        "The caller must know to check 'if err:' rather than 'if err is not None:' (both work here but the implicit contract is unclear)"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-01",
+      "summary": "mail() has multiple parameters typed as X but defaulted to None \u2014 Optional mismatch throughout",
+      "confidence": "high",
+      "suggestion": "Replace all 'X = None' parameter types with 'Optional[X] = None' (or 'X | None = None' in Python 3.10+ style) throughout the mail() signature",
+      "related_files": [
+        "app/eventyay/base/services/mail.py"
+      ],
+      "evidence": [
+        "Line 74: 'context: dict[str, Any] = None' \u2014 should be Optional[dict[str, Any]]",
+        "Line 75: 'event: Event = None' \u2014 should be Optional[Event]",
+        "Line 76: 'locale: str = None' \u2014 should be Optional[str]",
+        "Line 77: 'order: Order = None' \u2014 should be Optional[Order]",
+        "Line 78: 'position: OrderPosition = None' \u2014 should be Optional[OrderPosition]"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-02",
+      "summary": "Core order service functions missing return type annotations entirely",
+      "confidence": "high",
+      "suggestion": "Add return type annotations: reactivate_order -> None, approve_order -> int, deny_order -> int, mark_order_expired -> Order, extend_order -> None",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "reactivate_order: no return annotation (returns None implicitly)",
+        "approve_order: returns order.pk (int) but no '-> int' annotation",
+        "deny_order: same",
+        "mark_order_expired: returns order (Order) but no annotation",
+        "extend_order: returns None but no annotation"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-03",
+      "summary": "CartManager.__init__ parameter invoice_address typed as InvoiceAddress but defaults to None",
+      "confidence": "high",
+      "suggestion": "Change to 'invoice_address: Optional[InvoiceAddress] = None'",
+      "related_files": [
+        "app/eventyay/base/services/cart.py"
+      ],
+      "evidence": [
+        "Line 190: 'invoice_address: InvoiceAddress = None' \u2014 InvoiceAddress is not Optional here"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-04",
+      "summary": "_check_positions accepts positions annotated as list[CartPosition] but receives an annotated QuerySet at runtime",
+      "confidence": "high",
+      "suggestion": "Change annotation to 'Iterable[CartPosition]' or explicitly evaluate to a list before passing; the QuerySet is evaluated inside the function with list() anyway but the annotation misleads about what is expected",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "Line 603: 'positions: list[CartPosition]'",
+        "Caller _perform_order line 1135 passes 'CartPosition.objects.annotate(requires_seat=...).filter(...)' \u2014 a QuerySet, not a list"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-05",
+      "summary": "Order.STATUS_REFUNDED = 'c' deprecated alias creates parallel type definition risk with STATUS_CANCELED",
+      "confidence": "medium",
+      "suggestion": "Remove STATUS_REFUNDED from the class or add a deprecation warning if it is still referenced, and add a linter rule preventing raw string 'c' comparisons against order.status",
+      "related_files": [
+        "app/eventyay/base/models/orders.py"
+      ],
+      "evidence": [
+        "Line 161: 'STATUS_REFUNDED = \"c\"  # deprecated' \u2014 same value as STATUS_CANCELED",
+        "Any code comparing order.status == 'c' could mean either state; the deprecated alias is still in the module namespace"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "type_safety",
+      "identifier": "TS-06",
+      "summary": "CountryField and CompatibleCountryField serializers have no return type annotations on to_internal_value / to_representation",
+      "confidence": "high",
+      "suggestion": "Annotate: to_internal_value -> dict[str, Country], to_representation -> str | None",
+      "related_files": [
+        "app/eventyay/api/serializers/order.py"
+      ],
+      "evidence": [
+        "Lines 62-77: both fields lack return annotations; to_internal_value returns a dict, to_representation returns str or None"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-01",
+      "summary": "Core order processing (base/services/orders.py) has zero dedicated tests",
+      "confidence": "high",
+      "suggestion": "Add a tests/stable/services/test_order_service.py covering at minimum: approve_order on pending approval order, deny_order on pending order, cancel_order with and without cancellation_fee, reactivate_order when quota is available",
+      "related_files": [
+        "app/eventyay/base/services/orders.py"
+      ],
+      "evidence": [
+        "No test file found for orders.py service layer",
+        "Functions like approve_order, deny_order, _cancel_order, _create_order, _check_positions represent the core business logic but are untested"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-02",
+      "summary": "stable/test_api.py uses status code ranges so wide they pass on broken endpoints",
+      "confidence": "high",
+      "suggestion": "Pin expected status codes to specific values for known endpoints; use pytest.mark.skip or parametrize for environment-dependent behavior instead of accepting broken endpoints as passing",
+      "related_files": [
+        "app/tests/stable/test_api.py"
+      ],
+      "evidence": [
+        "Line 15: 'assert response.status_code in [401, 403, 404]' \u2014 a 404 means the endpoint doesn't exist but the test still passes",
+        "Line 21: 'assert response.status_code in [200, 404]' \u2014 allows endpoint-not-found as a passing condition"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-03",
+      "summary": "base/services/checkin.py JSONLogic rule engine (perform_checkin, SQLLogic, LazyRuleVars) has no unit tests",
+      "confidence": "high",
+      "suggestion": "Add tests for: entry allowed when no rules, entry denied by custom rule, exit always allowed, duplicate entry prevention, required questions enforcement",
+      "related_files": [
+        "app/eventyay/base/services/checkin.py"
+      ],
+      "evidence": [
+        "No test file found for the checkin service in stable/",
+        "The rule evaluation logic (SQLLogic.apply, get_logic_environment) is complex and handles custom rules for entry/exit \u2014 errors here silently deny valid attendees"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "test_strategy",
+      "identifier": "TS-ST-04",
+      "summary": "base/services/cart.py CartManager has no unit tests for add/remove/voucher operations",
+      "confidence": "high",
+      "suggestion": "Add tests covering: add product to cart, add out-of-stock product, add product with voucher, remove cart position, apply voucher to existing cart position",
+      "related_files": [
+        "app/eventyay/base/services/cart.py"
+      ],
+      "evidence": [
+        "No test file found for cart service in stable/",
+        "CartManager handles quota locking, voucher validation, seat reservation \u2014 high-concurrency business logic with no test coverage"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-01",
+      "summary": "mail() has 17 parameters covering multiple distinct concerns \u2014 parameter overload and API boundary confusion",
+      "confidence": "high",
+      "suggestion": "Extract attachment configuration into a dedicated MailAttachmentConfig dataclass; extract sync_send into a separate send_mail_sync() function; reduce mail() to: email, subject, template, context, event, order/position, locale, headers, sender + an optional MailAttachmentConfig",
+      "related_files": [
+        "app/eventyay/base/services/mail.py"
+      ],
+      "evidence": [
+        "Lines 70-91: email, subject, template, context, event, locale, order, position, headers, sender, event_bcc, event_reply_to, invoices, attach_tickets, auto_email, user, attach_ical, attach_cached_files, sync_send \u2014 19 parameters total",
+        "The function handles: rendering, BCC logic, ticket attachment, ical attachment, file attachment, sync/async mode \u2014 at least 5 distinct concerns"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-02",
+      "summary": "perform_checkin has 12 parameters, several of which overlap (user, auth) or are poorly grouped",
+      "confidence": "medium",
+      "suggestion": "Introduce a CheckinOptions dataclass or named kwargs object for the boolean flags (force, ignore_unpaid, canceled_supported, questions_supported) to reduce the parameter surface to ~6",
+      "related_files": [
+        "app/eventyay/base/services/checkin.py"
+      ],
+      "evidence": [
+        "Line 377: def perform_checkin(op, clist, given_answers, force, ignore_unpaid, nonce, datetime, questions_supported, user, auth, canceled_supported, type)",
+        "user and auth represent overlapping authentication sources; force, ignore_unpaid, canceled_supported, questions_supported are 4 boolean flags that could be a CheckinOptions object"
+      ],
+      "impact_scope": "module",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-03",
+      "summary": "WebHookViewSet.perform_update returns inst while DRF's contract expects None \u2014 inconsistent return in API surface",
+      "confidence": "medium",
+      "suggestion": "Remove the 'return inst' \u2014 perform_update() should return None per DRF convention; if the updated instance is needed, store it on self or pass it differently",
+      "related_files": [
+        "app/eventyay/api/views/webhooks.py"
+      ],
+      "evidence": [
+        "Line 39: 'return inst' in perform_update()",
+        "DRF ModelViewSet.perform_update() does not define a return value contract \u2014 callers that call super() and use the return value would be surprised"
+      ],
+      "impact_scope": "local",
+      "fix_scope": "single_edit"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-04",
+      "summary": "Two divergent API base mixin patterns (pure DRF vs PretalxViewSetMixin) create inconsistent API surface across subsystems",
+      "confidence": "medium",
+      "suggestion": "Evaluate applying PretalxViewSetMixin or a unified base class to stable API viewsets as well, or document the explicit architectural decision that stable endpoints are version-independent",
+      "related_files": [
+        "app/eventyay/api/views/order.py",
+        "app/eventyay/api/views/speaker.py",
+        "app/eventyay/api/mixins.py"
+      ],
+      "evidence": [
+        "OrderViewSet (stable) uses viewsets.ModelViewSet directly with no versioning mixin",
+        "SpeakerViewSet (talk) uses PretalxViewSetMixin which handles versioned serializers via get_versioned_serializer()",
+        "A developer working on orders would not naturally look for versioning; a developer on speakers would expect it"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    },
+    {
+      "dimension": "api_surface_coherence",
+      "identifier": "AC-05",
+      "summary": "Sync/async boundary between order services (sync) and user/chat services (async) is undocumented and creates an inconsistent public API",
+      "confidence": "medium",
+      "suggestion": "Add module-level docstrings indicating which services are async-only vs sync-only; consider providing thin sync wrappers for the async user service functions used in sync view contexts",
+      "related_files": [
+        "app/eventyay/base/services/orders.py",
+        "app/eventyay/base/services/user.py",
+        "app/eventyay/base/services/chat.py"
+      ],
+      "evidence": [
+        "orders.py: all functions are synchronous",
+        "user.py: get_blocked_users, set_user_banned, delete_user, etc. are all @database_sync_to_async",
+        "A caller context that is synchronous cannot call user.py functions; a caller context that is async cannot call orders.py functions without running in a thread"
+      ],
+      "impact_scope": "subsystem",
+      "fix_scope": "multi_file_refactor"
+    }
+  ],
+  "review_quality": {
+    "batch_count": 20,
+    "dimension_coverage": 0.05,
+    "evidence_density": 2.607,
+    "issue_pressure": 134.044,
+    "dimensions_with_issues": 20,
+    "high_score_missing_issue_note": 0
+  },
+  "review_scope": {
+    "reviewed_files_count": 262,
+    "successful_batch_count": 20,
+    "full_sweep_included": false,
+    "total_files": 842,
+    "imported_dimensions": [
+      "abstraction_fitness",
+      "ai_generated_debt",
+      "api_surface_coherence",
+      "authorization_consistency",
+      "contract_coherence",
+      "convention_outlier",
+      "cross_module_architecture",
+      "dependency_health",
+      "design_coherence",
+      "error_consistency",
+      "high_level_elegance",
+      "incomplete_migration",
+      "initialization_coupling",
+      "logic_clarity",
+      "low_level_elegance",
+      "mid_level_elegance",
+      "naming_quality",
+      "package_organization",
+      "test_strategy",
+      "type_safety"
+    ]
+  },
+  "reviewed_files": [
+    "app/eventyay/base/models/mixins.py",
+    "app/eventyay/base/models/__init__.py",
+    "app/eventyay/base/signals.py",
+    "app/eventyay/base/models/event.py",
+    "app/eventyay/base/exporter.py",
+    "app/eventyay/base/models/orders.py",
+    "app/eventyay/base/models/organizer.py",
+    "app/eventyay/base/models/auth.py",
+    "app/eventyay/base/models/base.py",
+    "app/eventyay/base/models/product.py",
+    "app/eventyay/agenda/context_processors.py",
+    "app/eventyay/agenda/views/featured.py",
+    "app/eventyay/agenda/views/feed.py",
+    "app/eventyay/agenda/views/public.py",
+    "app/eventyay/agenda/views/speaker.py",
+    "app/eventyay/agenda/views/widget.py",
+    "app/eventyay/api/auth/api_auth.py",
+    "app/eventyay/api/auth/devicesecurity.py",
+    "app/eventyay/api/auth/permission.py",
+    "app/eventyay/api/middleware.py",
+    "app/eventyay/common/views/mixins.py",
+    "app/eventyay/presale/views/order.py",
+    "app/eventyay/plugins/reports/exporters.py",
+    "app/eventyay/base/views/mixins.py",
+    "app/eventyay/base/views/tasks.py",
+    "app/eventyay/control/views/subevents.py",
+    "app/eventyay/schedule/forms.py",
+    "app/eventyay/common/forms/mixins.py",
+    "app/eventyay/api/mixins.py",
+    "app/eventyay/api/views/exporters.py",
+    "app/eventyay/control/views/event.py",
+    "app/eventyay/control/views/product.py",
+    "app/eventyay/orga/views/speaker.py",
+    "app/eventyay/presale/views/organizer.py",
+    "app/eventyay/agenda/views/schedule.py",
+    "app/eventyay/agenda/views/talk.py",
+    "app/eventyay/orga/views/review.py",
+    "app/eventyay/orga/views/submission.py",
+    "app/eventyay/presale/views/cart.py",
+    "app/eventyay/cfp/views/user.py",
+    "app/eventyay/control/forms/server_management.py",
+    "app/eventyay/control/views/__init__.py",
+    "app/eventyay/base/models/access_code.py",
+    "app/eventyay/base/models/announcement.py",
+    "app/eventyay/base/services/__init__.py",
+    "app/eventyay/base/services/announcement.py",
+    "app/eventyay/base/services/auth.py",
+    "app/eventyay/base/__init__.py",
+    "app/eventyay/base/admin.py",
+    "app/eventyay/base/apps.py",
+    "app/eventyay/agenda/views/utils.py",
+    "app/eventyay/api/views/oauth.py",
+    "app/eventyay/api/views/stripe.py",
+    "app/eventyay/api/views/access_code.py",
+    "app/eventyay/api/views/device.py",
+    "app/eventyay/api/views/mail.py",
+    "app/eventyay/api/views/organizer.py",
+    "app/eventyay/api/views/question.py",
+    "app/eventyay/api/views/review.py",
+    "app/eventyay/api/views/rooms.py",
+    "app/eventyay/api/views/speaker.py",
+    "app/eventyay/api/views/speaker_information.py",
+    "app/eventyay/api/views/upload.py",
+    "app/eventyay/api/views/user.py",
+    "app/eventyay/api/views/version.py",
+    "app/eventyay/api/views/webhooks.py",
+    "app/eventyay/base/exporters/json.py",
+    "app/eventyay/base/exporters/orderlist.py",
+    "app/eventyay/base/exporters/waitinglist.py",
+    "app/eventyay/base/forms/validators.py",
+    "app/eventyay/base/forms/widgets.py",
+    "app/eventyay/base/models/transaction.py",
+    "app/eventyay/base/models/audit.py",
+    "app/eventyay/base/models/availability.py",
+    "app/eventyay/base/models/bbb.py",
+    "app/eventyay/base/models/cache.py",
+    "app/eventyay/base/models/chat.py",
+    "app/eventyay/base/models/exhibitor.py",
+    "app/eventyay/base/models/fields.py",
+    "app/eventyay/base/models/invoices.py",
+    "app/eventyay/base/models/janus.py",
+    "app/eventyay/base/models/poll.py",
+    "app/eventyay/base/models/poster.py",
+    "app/eventyay/base/models/roomquestion.py",
+    "app/eventyay/base/models/roulette.py",
+    "app/eventyay/base/models/storage_model.py",
+    "app/eventyay/base/models/streaming.py",
+    "app/eventyay/base/models/systemlog.py",
+    "app/eventyay/base/models/turn.py",
+    "app/eventyay/base/models/world.py",
+    "app/eventyay/consts.py",
+    "app/eventyay/cfp/forms/cfp.py",
+    "app/eventyay/cfp/views/event.py",
+    "app/eventyay/cfp/views/robots.py",
+    "app/eventyay/common/forms/renderers.py",
+    "app/eventyay/common/views/cache.py",
+    "app/eventyay/common/views/redirect.py",
+    "app/eventyay/config/sentry.py",
+    "app/eventyay/control/forms/renderers.py",
+    "app/eventyay/control/forms/checkin.py",
+    "app/eventyay/control/forms/orders.py",
+    "app/eventyay/control/forms/product.py",
+    "app/eventyay/control/forms/widgets.py",
+    "app/eventyay/control/forms/organizer_forms/base_organizer_footer_link_form_set.py",
+    "app/eventyay/control/forms/organizer_forms/event_meta_property_form.py",
+    "app/eventyay/control/forms/organizer_forms/gate_form.py",
+    "app/eventyay/control/forms/organizer_forms/gift_card_update_form.py",
+    "app/eventyay/control/forms/organizer_forms/organizer_settings_form.py",
+    "app/eventyay/control/forms/organizer_forms/web_hook_form.py",
+    "app/eventyay/control/views/geo.py",
+    "app/eventyay/control/views/typeahead.py",
+    "app/eventyay/control/views/main.py",
+    "app/eventyay/control/views/pdf.py",
+    "app/eventyay/control/views/search.py",
+    "app/eventyay/control/views/dashboards.py",
+    "app/eventyay/control/views/shredder.py",
+    "app/eventyay/control/views/global_settings.py",
+    "app/eventyay/control/views/waitinglist.py",
+    "app/eventyay/control/views/admin_views.py",
+    "app/eventyay/control/views/checkin.py",
+    "app/eventyay/control/views/pages.py",
+    "app/eventyay/presale/utils.py",
+    "app/eventyay/features/analytics/graphs/utils.py",
+    "app/eventyay/eventyay_common/utils.py",
+    "app/eventyay/features/social/utils.py",
+    "app/eventyay/common/views/helpers.py",
+    "app/eventyay/event/utils.py",
+    "app/eventyay/schedule/utils.py",
+    "app/eventyay/eventyay_common/views/account/common.py",
+    "app/eventyay/control/views/orders.py",
+    "app/eventyay/cfp/flow.py",
+    "app/eventyay/control/views/admin.py",
+    "app/eventyay/base/payment.py",
+    "app/eventyay/control/views/organizer.py",
+    "app/eventyay/control/views/organizer_views/organizer_view.py",
+    "app/eventyay/control/views/vouchers.py",
+    "app/eventyay/control/views/organizer_views/device_view.py",
+    "app/eventyay/control/views/users.py",
+    "app/eventyay/eventyay_common/views/event.py",
+    "app/eventyay/plugins/banktransfer/views.py",
+    "app/eventyay/base/orderimport.py",
+    "app/eventyay/control/views/organizer_views/gate_view.py",
+    "app/eventyay/control/logdisplay.py",
+    "app/eventyay/eventyay_common/views/auth.py",
+    "app/eventyay/plugins/sendmail/signals.py",
+    "app/eventyay/base/services/orders.py",
+    "app/eventyay/api/views/order.py",
+    "app/eventyay/orga/views/cfp.py",
+    "app/eventyay/orga/views/event.py",
+    "app/eventyay/orga/views/schedule.py",
+    "app/eventyay/api/serializers/order.py",
+    "app/eventyay/eventyay_common/views/account/two_factor_auth.py",
+    "app/eventyay/presale/urls.py",
+    "app/eventyay/orga/views/dashboard.py",
+    "app/eventyay/api/views/checkin.py",
+    "app/eventyay/base/services/user.py",
+    "app/eventyay/base/services/mail.py",
+    "app/eventyay/base/models/vouchers.py",
+    "app/eventyay/base/services/cancelevent.py",
+    "app/eventyay/base/services/cart.py",
+    "app/eventyay/schedule/ascii.py",
+    "app/eventyay/presale/views/event.py",
+    "app/eventyay/common/forms/widgets.py",
+    "app/eventyay/control/forms/__init__.py",
+    "app/eventyay/base/models/mail.py",
+    "app/eventyay/base/services/checkin.py",
+    "app/eventyay/base/services/chat.py",
+    "app/eventyay/base/auth.py",
+    "app/eventyay/core/utils/statsd.py",
+    "app/eventyay/api/filters/review.py",
+    "app/eventyay/api/filters/schedule.py",
+    "app/eventyay/base/configurations/__init__.py",
+    "app/eventyay/base/tasks.py",
+    "app/eventyay/common/forms/__init__.py",
+    "app/eventyay/common/middleware/__init__.py",
+    "app/eventyay/common/views/__init__.py",
+    "app/eventyay/control/forms/organizer_forms/__init__.py",
+    "app/eventyay/control/views/organizer_views/__init__.py",
+    "app/eventyay/eventyay_common/views/account/__init__.py",
+    "app/eventyay/orga/forms/__init__.py",
+    "app/eventyay/person/forms/__init__.py",
+    "app/eventyay/presale/checkoutflowstep/__init__.py",
+    "app/eventyay/plugins/checkinlists/exporters.py",
+    "app/eventyay/common/consts.py",
+    "app/eventyay/helpers/formats/de/formats.py",
+    "doc/conf.py",
+    "app/eventyay/api/versions.py",
+    "app/eventyay/api/views/event.py",
+    "app/eventyay/api/views/submission.py",
+    "app/eventyay/base/plugins.py",
+    "app/eventyay/api/pagination.py",
+    "app/eventyay/orga/permissions.py",
+    "app/eventyay/base/middleware.py",
+    "app/eventyay/common/text/phrases.py",
+    "app/eventyay/control/forms/filter.py",
+    "app/eventyay/base/forms/questions.py",
+    "app/eventyay/control/forms/global_settings.py",
+    "app/eventyay/base/email.py",
+    "app/eventyay/control/navigation.py",
+    "app/eventyay/api/serializers/event.py",
+    "app/eventyay/api/serializers/fields.py",
+    "app/eventyay/api/serializers/product.py",
+    "app/eventyay/api/serializers/question.py",
+    "app/eventyay/api/serializers/rooms.py",
+    "app/eventyay/api/serializers/stream_schedule.py",
+    "app/eventyay/api/webhooks.py",
+    "app/eventyay/base/cache.py",
+    "app/eventyay/base/forms/__init__.py",
+    "app/eventyay/base/forms/user.py",
+    "app/eventyay/base/models/auth_token.py",
+    "app/eventyay/base/models/checkin.py",
+    "app/eventyay/base/models/seating.py",
+    "app/eventyay/base/models/submission.py",
+    "app/eventyay/base/models/tax.py",
+    "app/eventyay/base/secrets.py",
+    "app/eventyay/base/services/invoices.py",
+    "app/eventyay/base/services/locking.py",
+    "app/eventyay/base/services/poll.py",
+    "app/eventyay/base/services/poster.py",
+    "app/eventyay/base/services/pricing.py",
+    "app/eventyay/base/services/room.py",
+    "app/eventyay/base/services/teams.py",
+    "app/eventyay/base/services/update_check.py",
+    "app/eventyay/base/shredder.py",
+    "app/eventyay/base/templatetags/rich_text.py",
+    "app/eventyay/base/ticketoutput.py",
+    "app/eventyay/base/views/errors.py",
+    "app/eventyay/common/context_processors.py",
+    "app/eventyay/common/exceptions.py",
+    "app/eventyay/common/image.py",
+    "app/eventyay/common/mail.py",
+    "app/eventyay/common/templatetags/filesize.py",
+    "app/eventyay/common/text/console.py",
+    "app/eventyay/common/urls.py",
+    "app/eventyay/control/context.py",
+    "app/eventyay/control/forms/page.py",
+    "app/eventyay/control/forms/vouchers.py",
+    "app/eventyay/control/urls.py",
+    "app/eventyay/control/views/orderimport.py",
+    "app/eventyay/control/views/user.py",
+    "app/eventyay/core/utils/redis.py",
+    "app/eventyay/eventyay_common/views/account/basic.py",
+    "app/eventyay/eventyay_common/views/organizer.py",
+    "app/eventyay/features/live/consumers.py",
+    "app/eventyay/features/live/decorators.py",
+    "app/eventyay/features/live/modules/auth.py",
+    "app/eventyay/features/live/modules/chat.py",
+    "app/eventyay/features/live/modules/room.py",
+    "app/eventyay/helpers/__init__.py",
+    "app/eventyay/helpers/formats/en_AU/formats.py",
+    "app/eventyay/helpers/formats/en_CA/formats.py",
+    "app/eventyay/helpers/formats/en_GB/formats.py",
+    "app/eventyay/helpers/formats/en_US/formats.py",
+    "app/eventyay/helpers/periodic.py",
+    "app/eventyay/helpers/reportlab.py",
+    "app/eventyay/helpers/stripe_utils.py",
+    "app/eventyay/orga/context_processors.py",
+    "app/eventyay/orga/forms/export.py",
+    "app/eventyay/orga/forms/schedule.py",
+    "app/eventyay/orga/urls.py",
+    "app/eventyay/plugins/banktransfer/csvimport.py",
+    "app/eventyay/plugins/banktransfer/mt940import.py"
+  ],
+  "provenance": {
+    "kind": "blind_review_batch_import",
+    "blind": true,
+    "runner": "claude",
+    "run_stamp": "20260315_103914",
+    "created_at": "2026-03-15T14:51:53+00:00",
+    "batch_count": 20,
+    "batch_indexes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "packet_path": "/Users/mishari/Library/CloudStorage/OneDrive-Personal/OneDrive Projects/OpenCode/eventyay/.desloppify/review_packet_blind.json",
+    "packet_sha256": "829554aee207c3e9d390b40065091973b5848bbe786c9516f171475d3f2eb2ea"
+  },
+  "assessment_coverage": {
+    "scored_dimensions": [
+      "naming_quality",
+      "logic_clarity",
+      "type_safety",
+      "contract_coherence",
+      "error_consistency",
+      "abstraction_fitness",
+      "ai_generated_debt",
+      "high_level_elegance",
+      "mid_level_elegance",
+      "low_level_elegance",
+      "cross_module_architecture",
+      "initialization_coupling",
+      "convention_outlier",
+      "dependency_health",
+      "test_strategy",
+      "api_surface_coherence",
+      "authorization_consistency",
+      "incomplete_migration",
+      "package_organization",
+      "design_coherence"
+    ],
+    "selected_dimensions": [
+      "naming_quality",
+      "logic_clarity",
+      "type_safety",
+      "contract_coherence",
+      "error_consistency",
+      "abstraction_fitness",
+      "ai_generated_debt",
+      "high_level_elegance",
+      "mid_level_elegance",
+      "low_level_elegance",
+      "cross_module_architecture",
+      "initialization_coupling",
+      "convention_outlier",
+      "dependency_health",
+      "test_strategy",
+      "api_surface_coherence",
+      "authorization_consistency",
+      "incomplete_migration",
+      "package_organization",
+      "design_coherence"
+    ],
+    "imported_dimensions": [
+      "abstraction_fitness",
+      "ai_generated_debt",
+      "api_surface_coherence",
+      "authorization_consistency",
+      "contract_coherence",
+      "convention_outlier",
+      "cross_module_architecture",
+      "dependency_health",
+      "design_coherence",
+      "error_consistency",
+      "high_level_elegance",
+      "incomplete_migration",
+      "initialization_coupling",
+      "logic_clarity",
+      "low_level_elegance",
+      "mid_level_elegance",
+      "naming_quality",
+      "package_organization",
+      "test_strategy",
+      "type_safety"
+    ],
+    "missing_dimensions": []
+  }
+}
