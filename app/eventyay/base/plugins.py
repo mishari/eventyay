@@ -2,7 +2,6 @@ import importlib.metadata
 import logging
 import os
 import sys
-from enum import Enum
 from itertools import groupby
 from typing import List
 
@@ -13,19 +12,6 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
 logger = logging.getLogger(__name__)
-
-
-class PluginType(Enum):
-    """
-    Plugin type classification. THIS IS DEPRECATED, DO NOT USE ANY MORE.
-    This is only not removed yet as external plugins might have references
-    to this enum.
-    """
-
-    RESTRICTION = 1
-    PAYMENT = 2
-    ADMINFEATURE = 3
-    EXPORT = 4
 
 
 def get_all_plugins(event=None) -> List[type]:
@@ -56,7 +42,6 @@ def get_all_plugins(event=None) -> List[type]:
     )
 
 
-# from eventyay-talk
 CATEGORY_LABELS = {
     'FEATURE': pgettext_lazy('Type of plugin', 'Features'),
     'INTEGRATION': pgettext_lazy('Type of plugin', 'Integrations'),
@@ -68,17 +53,14 @@ CATEGORY_LABELS = {
 }
 
 
-# from eventyay-talk
 def plugin_group_key(plugin):
     return getattr(plugin, 'category', 'OTHER')
 
 
-# from eventyay-talk
 def plugin_sort_key(plugin):
     return str(plugin.name).lower().replace('pretalx ', '')
 
 
-# from eventyay-talk
 def get_all_plugins_grouped(event=None, filter_visible=True):
     """
     Return a dict of all plugins found in the installed Django apps, grouped by category.

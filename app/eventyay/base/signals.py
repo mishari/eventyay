@@ -123,7 +123,7 @@ class EventPluginSignal(django.dispatch.Signal):
         Send signal from sender to all connected receivers that belong to
         plugins enabled for the given Event.
 
-        sender is required to be an instance of ``pretix.base.models.Event``.
+        sender is required to be an instance of ``eventyay.base.models.Event``.
         """
         if sender and not isinstance(sender, Event):
             raise ValueError('Sender needs to be an event.')
@@ -147,7 +147,7 @@ class EventPluginSignal(django.dispatch.Signal):
         will be used as the keyword argument specified by ``chain_kwarg_name`` in the input to the
         second receiver and so on. The return value of the last receiver is returned by this method.
 
-        sender is required to be an instance of ``pretix.base.models.Event``.
+        sender is required to be an instance of ``eventyay.base.models.Event``.
         """
         if sender and not isinstance(sender, Event):
             raise ValueError('Sender needs to be an event.')
@@ -171,7 +171,7 @@ class EventPluginSignal(django.dispatch.Signal):
         instead of returning a value, the exception is included as the result instead of
         stopping the response chain at the offending receiver.
 
-        sender is required to be an instance of ``pretix.base.models.Event``.
+        sender is required to be an instance of ``eventyay.base.models.Event``.
         """
         if sender and not isinstance(sender, Event):
             raise ValueError('Sender needs to be an event.')
@@ -255,7 +255,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_payment_providers = EventPluginSignal()
 """
 This signal is sent out to get all known payment providers. Receivers should return a
-subclass of pretix.base.payment.BasePaymentProvider or a list of these
+subclass of eventyay.base.payment.BasePaymentProvider or a list of these
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -263,7 +263,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_mail_placeholders = EventPluginSignal()
 """
 This signal is sent out to get all known email text placeholders. Receivers should return
-an instance of a subclass of pretix.base.email.BaseMailTextPlaceholder or a list of these.
+an instance of a subclass of eventyay.base.email.BaseMailTextPlaceholder or a list of these.
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -271,7 +271,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_html_mail_renderers = EventPluginSignal()
 """
 This signal is sent out to get all known HTML email renderers. Receivers should return a
-subclass of pretix.base.email.BaseHTMLMailRenderer or a list of these
+subclass of eventyay.base.email.BaseHTMLMailRenderer or a list of these
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -279,7 +279,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_invoice_renderers = EventPluginSignal()
 """
 This signal is sent out to get all known invoice renderers. Receivers should return a
-subclass of pretix.base.invoice.BaseInvoiceRenderer or a list of these
+subclass of eventyay.base.invoice.BaseInvoiceRenderer or a list of these
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -287,7 +287,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_ticket_secret_generators = EventPluginSignal()
 """
 This signal is sent out to get all known ticket secret generators. Receivers should return a
-subclass of ``pretix.base.secrets.BaseTicketSecretGenerator`` or a list of these
+subclass of ``eventyay.base.secrets.BaseTicketSecretGenerator`` or a list of these
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -295,7 +295,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_data_shredders = EventPluginSignal()
 """
 This signal is sent out to get all known data shredders. Receivers should return a
-subclass of pretix.base.shredder.BaseDataShredder or a list of these
+subclass of eventyay.base.shredder.BaseDataShredder or a list of these
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -303,7 +303,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_ticket_outputs = EventPluginSignal()
 """
 This signal is sent out to get all known ticket outputs. Receivers should return a
-subclass of pretix.base.ticketoutput.BaseTicketOutput
+subclass of eventyay.base.ticketoutput.BaseTicketOutput
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -311,7 +311,7 @@ As with all event-plugin signals, the ``sender`` keyword argument will contain t
 register_notification_types = EventPluginSignal()
 """
 This signal is sent out to get all known notification types. Receivers should return an
-instance of a subclass of pretix.base.notifications.NotificationType or a list of such
+instance of a subclass of eventyay.base.notifications.NotificationType or a list of such
 instances.
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event,
@@ -322,14 +322,14 @@ notification settings!
 register_sales_channels = django.dispatch.Signal()
 """
 This signal is sent out to get all known sales channels types. Receivers should return an
-instance of a subclass of ``pretix.base.channels.SalesChannel`` or a list of such
+instance of a subclass of ``eventyay.base.channels.SalesChannel`` or a list of such
 instances.
 """
 
 register_data_exporters = EventPluginSignal()
 """
 This signal is sent out to get all known data exporters. Receivers should return a
-subclass of pretix.base.exporter.BaseExporter
+subclass of eventyay.base.exporter.BaseExporter
 
 As with all event-plugin signals, the ``sender`` keyword argument will contain the event.
 """
@@ -339,7 +339,7 @@ register_multievent_data_exporters = django.dispatch.Signal()
 Arguments: ``event``
 
 This signal is sent out to get all known data exporters, which support exporting data for
-multiple events. Receivers should return a subclass of pretix.base.exporter.BaseExporter
+multiple events. Receivers should return a subclass of eventyay.base.exporter.BaseExporter
 
 The ``sender`` keyword argument will contain an organizer.
 """
@@ -508,7 +508,7 @@ logentry_display = EventPluginSignal()
 Arguments: ``logentry``
 
 To display an instance of the ``LogEntry`` model to a human user,
-``pretix.base.signals.logentry_display`` will be sent out with a ``logentry`` argument.
+``eventyay.base.signals.logentry_display`` will be sent out with a ``logentry`` argument.
 
 The first received response that is not ``None`` will be used to display the log entry
 to the user. The receivers are expected to return plain text.
@@ -521,7 +521,7 @@ logentry_object_link = EventPluginSignal()
 Arguments: ``logentry``
 
 To display the relationship of an instance of the ``LogEntry`` model to another model
-to a human user, ``pretix.base.signals.logentry_object_link`` will be sent out with a
+to a human user, ``eventyay.base.signals.logentry_object_link`` will be sent out with a
 ``logentry`` argument.
 
 The first received response that is not ``None`` will be used to display the related object
@@ -549,7 +549,7 @@ requiredaction_display = EventPluginSignal()
 Arguments: ``action``, ``request``
 
 To display an instance of the ``RequiredAction`` model to a human user,
-``pretix.base.signals.requiredaction_display`` will be sent out with a ``action`` argument.
+``eventyay.base.signals.requiredaction_display`` will be sent out with a ``action`` argument.
 You will also get the current ``request`` in a different argument.
 
 The first received response that is not ``None`` will be used to display the log entry
@@ -719,7 +719,7 @@ timeline_events = EventPluginSignal()
 """
 This signal is sent out to collect events for the time line shown on event dashboards. You are passed
 a ``subevent`` argument which might be none and you are expected to return a list of instances of
-``pretix.base.timeline.TimelineEvent``, which is a ``namedtuple`` with the fields ``event``, ``subevent``,
+``eventyay.base.timeline.TimelineEvent``, which is a ``namedtuple`` with the fields ``event``, ``subevent``,
 ``datetime``, ``description`` and ``edit_url``.
 """
 
