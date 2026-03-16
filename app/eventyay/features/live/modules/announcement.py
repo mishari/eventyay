@@ -7,8 +7,10 @@ from eventyay.base.services.announcement import (
     get_announcements,
     update_announcement,
 )
+from eventyay.base.models.announcement import Announcement
 from eventyay.features.live.channels import GROUP_EVENT
 from eventyay.features.live.decorators import command, event, require_event_permission
+from eventyay.features.live.exceptions import ConsumerException
 from eventyay.features.live.modules.base import BaseModule
 
 logger = logging.getLogger(__name__)
@@ -40,12 +42,15 @@ class AnnouncementModule(BaseModule):
     @command("update")
     @require_event_permission(Permission.EVENT_ANNOUNCE)
     async def update_announcement(self, body):
-        old_announcement = await get_announcement(
-            body.get("id"), event=self.consumer.event.id
-        )
-        new_announcement = await update_announcement(
-            event=self.consumer.event.id, **body
-        )
+        try:
+            old_announcement = await get_announcement(
+                body.get("id"), event=self.consumer.event.id
+            )
+            new_announcement = await update_announcement(
+                event=self.consumer.event.id, **body
+            )
+        except Announcement.DoesNotExist:
+            raise ConsumerException("announcement.not_found")
 
         await self.consumer.send_success({"announcement": new_announcement})
 
