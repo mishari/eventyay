@@ -99,9 +99,7 @@ class LoggingMixin:
             **kwargs,
         )
         if isinstance(data, dict):
-            sensitivekeys = ['password', 'secret', 'api_key']
-
-            for sensitivekey in sensitivekeys:
+            for sensitivekey in ['password', 'secret', 'api_key']:
                 for k, v in data.items():
                     if (sensitivekey in k) and v:
                         data[k] = '********'

@@ -8,7 +8,7 @@ from eventyay.common.views.mixins import EventPermissionRequired
 from eventyay.base.models.submission import SubmissionStates
 
 
-def sneakpeek_redirect(request, *args, **kwargs):
+def preview_redirect(request, *args, **kwargs):
     return HttpResponsePermanentRedirect(request.event.urls.featured)
 
 

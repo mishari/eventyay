@@ -58,7 +58,7 @@ def get_used_backend(request):
     return backend
 
 
-def process_login(request, user, keep_logged_in):
+def route_after_login(request, user, keep_logged_in):
     """
     This method allows you to return a response to a successful log-in. This will set all session values correctly
     and redirect to either the URL specified in the ``next`` parameter, or the 2FA login screen, or the dashboard.
@@ -92,7 +92,7 @@ def process_login_and_set_cookie(request, user, keep_logged_in):
     Process user login and set a JWT cookie.
     """
     # Perform login logic (e.g., set session, authenticate user)
-    response = process_login(request, user, keep_logged_in)
+    response = route_after_login(request, user, keep_logged_in)
 
     # Generate JWT token
     response = set_cookie_after_logged_in(request, response)

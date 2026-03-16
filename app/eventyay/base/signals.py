@@ -112,14 +112,9 @@ class EventPluginSignal(django.dispatch.Signal):
             # Send to all events!
             return True
 
-        # Find the Django application this belongs to
         module_path = receiver.__module__
         is_core_module = any(module_path.startswith(cm) for cm in settings.CORE_MODULES)
-
-        # Resolve the app using thread-safe cached function
         app = resolve_app_for_module(module_path)
-
-        # Use shared helper to check if receiver should be active
         # EVENTYAY_PLUGINS_EXCLUDE is always a tuple, guaranteed by Pydantic
         return check_plugin_active(sender, app, is_core_module, settings.EVENTYAY_PLUGINS_EXCLUDE, lambda s: s.get_plugins())
 

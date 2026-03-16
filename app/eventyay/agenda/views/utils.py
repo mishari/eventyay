@@ -204,22 +204,16 @@ def get_schedule_exporter_content(request, exporter_name, schedule, token=None):
             exporter.talk_ids = request.GET.get('talks').split(',')
         else:
             return HttpResponseRedirect(request.event.urls.login)
-    if token and "-my" in exporter.identifier:
-        user_id, _ = load_starred_ics_token(token, event=request.event)
-        if not user_id:
-            return
+    if "-my" in exporter.identifier:
+        if token:
+            user_id, _ = load_starred_ics_token(token, event=request.event)
+            if not user_id:
+                return
+        else:
+            user_id = request.user.id
         talk_ids = list(
             SubmissionFavourite.objects.filter(
                 user_id=user_id,
-                submission__event=request.event,
-            ).values_list('submission__code', flat=True)
-        )
-        if talk_ids:
-            exporter.talk_ids = talk_ids
-    elif "-my" in exporter.identifier:
-        talk_ids = list(
-            SubmissionFavourite.objects.filter(
-                user_id=request.user.id,
                 submission__event=request.event,
             ).values_list('submission__code', flat=True)
         )

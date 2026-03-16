@@ -83,8 +83,7 @@ class LogMixin:
 
         # Sanitize data
         if isinstance(data, dict):
-            sensitive_keys = ['password', 'secret', 'api_key']
-            for sensitive in sensitive_keys:
+            for sensitive in SENSITIVE_KEYS:
                 for k, v in data.items():
                     if sensitive in k and v:
                         data[k] = '********'
