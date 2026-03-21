@@ -245,7 +245,7 @@ def extend_order(order: Order, new_date: datetime, force: bool = False, user: Us
 
 
 @transaction.atomic
-def mark_order_refunded(order, user=None, auth=None, api_token=None):
+def mark_order_refunded(order: Order, user: User | None = None, auth=None, api_token=None):
     oautha = auth.pk if isinstance(auth, OAuthApplication) else None
     device = auth.pk if isinstance(auth, Device) else None
     api_token = (api_token.pk if api_token else None) or (auth if isinstance(auth, TeamAPIToken) else None)
@@ -259,7 +259,7 @@ def mark_order_refunded(order, user=None, auth=None, api_token=None):
     )
 
 
-def mark_order_expired(order, user=None, auth=None):
+def mark_order_expired(order: Order, user: User | None = None, auth=None):
     """
     Mark this order as expired. This sets the payment status and returns the order object.
     :param order: The order to change
@@ -283,7 +283,7 @@ def mark_order_expired(order, user=None, auth=None):
     return order
 
 
-def approve_order(order, user=None, send_mail: bool = True, auth=None, force=False):
+def approve_order(order: Order, user: User | None = None, send_mail: bool = True, auth=None, force=False):
     """
     Mark this order as approved
     :param order: The order to change
@@ -356,7 +356,7 @@ def approve_order(order, user=None, send_mail: bool = True, auth=None, force=Fal
     return order.pk
 
 
-def deny_order(order, comment='', user=None, send_mail: bool = True, auth=None):
+def deny_order(order: Order, comment='', user: User | None = None, send_mail: bool = True, auth=None):
     """
     Mark this order as canceled
     :param order: The order to change

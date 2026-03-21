@@ -274,9 +274,9 @@ class ExhibitionService:
         r = get_request_by_id(self.event.pk, contact_request_id)
         if not r:
             return None
-        if r.state == "answered":
+        if r.state == ContactRequest.States.ANSWERED:
             return None
-        r.state = "missed"
+        r.state = ContactRequest.States.MISSED
         r.save(update_fields=["state"])
         return r.serialize()
 
@@ -285,9 +285,9 @@ class ExhibitionService:
         r = get_request_by_id(self.event.pk, contact_request_id)
         if not r:
             return None
-        if r.state == "answered":
+        if r.state == ContactRequest.States.ANSWERED:
             return None
-        r.state = "answered"
+        r.state = ContactRequest.States.ANSWERED
         r.answered_by = staff
         r.save(update_fields=["state", "answered_by"])
         return r.serialize()
@@ -303,7 +303,7 @@ class ExhibitionService:
     def get_open_requests_from_user(self, user):
         return [
             cr.serialize()
-            for cr in user.exhibitor_contact_requests.filter(state="open")
+            for cr in user.exhibitor_contact_requests.filter(state=ContactRequest.States.OPEN)
         ]
 
     @database_sync_to_async

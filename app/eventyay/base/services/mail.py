@@ -71,7 +71,7 @@ def mail(
     email: str | Sequence[str],
     subject: str,
     template: str | LazyI18nString,
-    context: dict[str, Any] = None,
+    context: dict[str, Any] | None = None,
     event: Event = None,
     locale: str = None,
     order: Order = None,

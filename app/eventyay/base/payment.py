@@ -1387,7 +1387,7 @@ class GiftCardPayment(BasePaymentProvider):
                 ),
             )
 
-    def execute_payment(self, request: HttpRequest, payment: OrderPayment) -> str:
+    def execute_payment(self, request: HttpRequest, payment: OrderPayment) -> str | None:
         # This method will only be called when retrying payments, e.g. after a payment_prepare call. It is not called
         # during the order creation phase because this payment provider is a special case.
         for p in payment.order.positions.all():  # noqa - just a safeguard
